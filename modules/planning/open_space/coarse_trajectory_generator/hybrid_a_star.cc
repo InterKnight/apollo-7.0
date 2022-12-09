@@ -37,6 +37,7 @@ HybridAStar::HybridAStar(const PlannerOpenSpaceConfig& open_space_conf) {
       std::make_unique<GridSearch>(planner_open_space_config_);
   next_node_num_ =
       planner_open_space_config_.warm_start_config().next_node_num();
+  // 最大前轮转角是最大方向盘转角乘以一个系数
   max_steer_angle_ =
       vehicle_param_.max_steer_angle() / vehicle_param_.steer_ratio();
   step_size_ = planner_open_space_config_.warm_start_config().step_size();
@@ -142,7 +143,7 @@ std::shared_ptr<Node3d> HybridAStar::LoadRSPinCS(
 
 std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
     std::shared_ptr<Node3d> current_node, size_t next_node_index) {
-  double steering = 0.0;
+  double steering = 0.0;  // 这里是前轮转角，不是方向盘转角
   double traveled_distance = 0.0;
 //首先，根据next_node_index与next_node_num_的对比是可以区分运动方向的（前进和倒车）
   // next_node_num_ 默认是10，前一半是前进，后一半是后退，和下面的图有些出入，下面的图画的是6的情况
@@ -161,7 +162,7 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
         -max_steer_angle_ +
         (2 * max_steer_angle_ / (static_cast<double>(next_node_num_) / 2 - 1)) *
             static_cast<double>(next_node_index);
-    // step_size_ 默认0.25，是每次向前运动的距离，但是怎么保证这个轨迹符合车辆动力学模型呢？
+    // step_size_ 默认0.25，是每次向前运动的距离,为什么这个step是通过配置文件写死的，不是应该为 v*dt 吗？
     traveled_distance = step_size_;
   } else {
     // 后退
@@ -174,22 +175,34 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
   }
   // take above motion primitive to generate a curve driving the car to a
   // different grid
+  // 对角线长度，这样就能保证一个格子里，最多只有一个节点
   double arc = std::sqrt(2) * xy_grid_resolution_;
   std::vector<double> intermediate_x;
   std::vector<double> intermediate_y;
   std::vector<double> intermediate_phi;
   double last_x = current_node->GetX();
   double last_y = current_node->GetY();
-  double last_phi = current_node->GetPhi();
+  double last_phi = current_node->GetPhi(); // phi是车体朝向
   intermediate_x.push_back(last_x);
   intermediate_y.push_back(last_y);
   intermediate_phi.push_back(last_phi);
+  // 在向外扩展子节点时，每次需要向外扩展arc长度，但不是一步就迈arc的长度，而是一小步一小步来，每一小步的长度为step_size_
+  // 由于arc和grid resolution是根号2倍的关系，该node的next_node一定在相邻的其他grid内
+  // 相邻grid内的最后一个路径点会被定义为next node，但该grid内可以有多个路径点，就是可以走多步
+  // 如果step_size太大，则会不符合车辆动力学的简化假设，太小则会增加计算量。默认0.25
+  // arc其实就是网格大小的根号2倍，arc太大可能轨迹不是最优的，arc太小会增加计算量. 网格大小默认0.3
   for (size_t i = 0; i < arc / step_size_; ++i) {
     const double next_x = last_x + traveled_distance * std::cos(last_phi);
     const double next_y = last_y + traveled_distance * std::sin(last_phi);
     const double next_phi = common::math::NormalizeAngle(
         last_phi +
         traveled_distance / vehicle_param_.wheel_base() * std::tan(steering));
+    /******************************************************************************
+    * next_phi = last_phi + ω*dt      \
+    *                                   ----> next_phi = last_phi + v/L*tan(δ)*dt
+    * ω = v/R = v/L*tan(δ) 自行车模型  /                = last_phi + v*dt /L*tan(δ)
+    *                                                  = last_phi + traveled_distance /L*tan(δ)
+    *******************************************************************************/
     intermediate_x.push_back(next_x);
     intermediate_y.push_back(next_y);
     intermediate_phi.push_back(next_phi);
@@ -204,6 +217,7 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
       intermediate_y.back() < XYbounds_[2]) {
     return nullptr;
   }
+  // node3d 有重载，可以直接用vector生成，会自动取vector中最后一个
   std::shared_ptr<Node3d> next_node = std::shared_ptr<Node3d>(
       new Node3d(intermediate_x, intermediate_y, intermediate_phi, XYbounds_,
                  planner_open_space_config_));
@@ -707,10 +721,10 @@ bool HybridAStar::Plan(
   // load open set, pq
   // 用emplace比push效率高，并且用push的话，需要写成 make_pair(next_node->GetIndex(), next_node)，多一个make_pair
   // open_set_是一个unordered_map的类型，用这个是因为这种键值对的形式比较方便，不需要排序所以用unordered可能节省资源。
-  // open_pq_现在是pq的类型，主要是要有序这个特性。虽然set也可以有序，但是pq比set快，set多了一个唯一的属性 
+  // open_pq_现在是pq的类型，主要是要有序这个特性。虽然set也可以有序，但是pq比set快，set多了一个唯一的属性
   open_set_.emplace(start_node_->GetIndex(), start_node_);
   open_pq_.emplace(start_node_->GetIndex(), start_node_->GetCost());
-
+  // GetIndex()返回的是一个string，类似 "x_y"
   // Hybrid A* begins
   size_t explored_node_num = 0;
   double astar_start_time = Clock::NowInSeconds();
