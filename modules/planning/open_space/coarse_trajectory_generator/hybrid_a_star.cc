@@ -632,28 +632,39 @@ bool HybridAStar::GetTemporalProfile(HybridAStartResult* result) {
   return true;
 }
 
+// Hybrid A star的核心过程
 bool HybridAStar::Plan(
     double sx, double sy, double sphi, double ex, double ey, double ephi,
     const std::vector<double>& XYbounds,
     const std::vector<std::vector<common::math::Vec2d>>& obstacles_vertices_vec,
     HybridAStartResult* result) {
   // clear containers
+  //每次规划，清空之前的缓存数据
   open_set_.clear();
   close_set_.clear();
+  // decltype,为什么一定要用这个,因为pq本身没有clear方法，要么用下面这种，要么自己用swap实现一个clear方法。
+  // 其实不用它自动检测类型，类型是已知的，可能是为了写起来方便，因为那个类型特别长
   open_pq_ = decltype(open_pq_)();
   final_node_ = nullptr;
+   //构造障碍物轮廓线段容器
   std::vector<std::vector<common::math::LineSegment2d>>
       obstacles_linesegments_vec;
+  // 拿到每个障碍物
   for (const auto& obstacle_vertices : obstacles_vertices_vec) {
+    // 角点数量
     size_t vertices_num = obstacle_vertices.size();
     std::vector<common::math::LineSegment2d> obstacle_linesegments;
+    // 依次对该障碍物的每个边读取
     for (size_t i = 0; i < vertices_num - 1; ++i) {
+      // 遍历各个顶点得到边，这里应该少了end至start的情况
       common::math::LineSegment2d line_segment = common::math::LineSegment2d(
           obstacle_vertices[i], obstacle_vertices[i + 1]);
       obstacle_linesegments.emplace_back(line_segment);
     }
+    // 得到该障碍物的所有边
     obstacles_linesegments_vec.emplace_back(obstacle_linesegments);
   }
+  // 不知道这个是干嘛用的，右值引用
   obstacles_linesegments_vec_ = std::move(obstacles_linesegments_vec);
   // load XYbounds
   XYbounds_ = XYbounds;
@@ -670,13 +681,20 @@ bool HybridAStar::Plan(
     AERROR << "end_node in collision with obstacles";
     return false;
   }
+
+  //使用动态规划DP来计算目标点到某点的启发代价（以目标点为DP的起点），按之前的资料，这里的dp应该是经典A*，待确认
+  //生成graph的同时获得了目标点到图中任一点的cost，后续只需要查表，空间换时间
   double map_time = Clock::NowInSeconds();
   grid_a_star_heuristic_generator_->GenerateDpMap(ex, ey, XYbounds_,
                                                   obstacles_linesegments_vec_);
   ADEBUG << "map time " << Clock::NowInSeconds() - map_time;
   // load open set, pq
+  // 用emplace比push效率高，并且用push的话，需要写成 make_pair(next_node->GetIndex(), next_node)，多一个make_pair
+  // open_set_是一个unordered_map的类型，用这个是因为这种键值对的形式比较方便，不需要排序所以用unordered可能节省资源。
+  // open_pq_现在是pq的类型，主要是要有序这个特性。虽然set也可以有序，但是pq比set快，set多了一个唯一的属性 
   open_set_.emplace(start_node_->GetIndex(), start_node_);
   open_pq_.emplace(start_node_->GetIndex(), start_node_->GetCost());
+
   // Hybrid A* begins
   size_t explored_node_num = 0;
   double astar_start_time = Clock::NowInSeconds();
