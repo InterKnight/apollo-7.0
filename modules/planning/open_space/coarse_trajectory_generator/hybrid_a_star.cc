@@ -58,12 +58,14 @@ HybridAStar::HybridAStar(const PlannerOpenSpaceConfig& open_space_conf) {
 bool HybridAStar::AnalyticExpansion(std::shared_ptr<Node3d> current_node) {
   std::shared_ptr<ReedSheppPath> reeds_shepp_to_check =
       std::make_shared<ReedSheppPath>();
+  // 生成RS曲线
   if (!reed_shepp_generator_->ShortestRSP(current_node, end_node_,
                                           reeds_shepp_to_check)) {
     ADEBUG << "ShortestRSP failed";
     return false;
   }
 
+  // 判断生成的RS曲线是否满足碰撞条件
   if (!RSPCheck(reeds_shepp_to_check)) {
     return false;
   }
@@ -142,13 +144,27 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
     std::shared_ptr<Node3d> current_node, size_t next_node_index) {
   double steering = 0.0;
   double traveled_distance = 0.0;
+//首先，根据next_node_index与next_node_num_的对比是可以区分运动方向的（前进和倒车）
+  // next_node_num_ 默认是10，前一半是前进，后一半是后退，和下面的图有些出入，下面的图画的是6的情况
+  // steering = 初始偏移量 + 单位间隔 × index
+  /****************************************************************************
+   *      转向定义为左打舵为 “+”，右打舵为负“-”，carsim里是这样定义的
+   *      (-max_steer_angle_) 4   < \     / >   3  (max_steer_angle_)
+   *                                 \   /
+   *               (后退方向)  5 <----- O -----> 2  (前进方向)
+   *                                 /   \
+   *       (max_steer_angle_) 6   < /     \ >   1 (-max_steer_angle_)
+   * **************************************************************************/
   if (next_node_index < static_cast<double>(next_node_num_) / 2) {
+    // 前进
     steering =
         -max_steer_angle_ +
         (2 * max_steer_angle_ / (static_cast<double>(next_node_num_) / 2 - 1)) *
             static_cast<double>(next_node_index);
+    // step_size_ 默认0.25，是每次向前运动的距离，但是怎么保证这个轨迹符合车辆动力学模型呢？
     traveled_distance = step_size_;
   } else {
+    // 后退
     size_t index = next_node_index - next_node_num_ / 2;
     steering =
         -max_steer_angle_ +
@@ -708,6 +724,7 @@ bool HybridAStar::Plan(
     // check if an analystic curve could be connected from current
     // configuration to the end configuration without collision. if so, search
     // ends.
+    // 用RS曲线试试运气，运气爆棚可以到达终点，则搜索结束，理论上这不应该每次都试把？
     const double rs_start_time = Clock::NowInSeconds();
     if (AnalyticExpansion(current_node)) {
       break;
