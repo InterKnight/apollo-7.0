@@ -87,12 +87,14 @@ bool HybridAStar::RSPCheck(
 
 bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
   CHECK_NOTNULL(node);
+  // GT是greater than 的简写,数字后面加U表示用 unsigned int类型存储数字，默认是int，加U就可以减小空间消耗
   CHECK_GT(node->GetStepSize(), 0U);
 
   if (obstacles_linesegments_vec_.empty()) {
     return true;
   }
 
+  // 这里的node_step_size和全局的不一样，这里的默认是1，不知道这里的是干嘛用的？
   size_t node_step_size = node->GetStepSize();
   const auto& traversed_x = node->GetXs();
   const auto& traversed_y = node->GetYs();
@@ -100,6 +102,12 @@ bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
 
   // The first {x, y, phi} is collision free unless they are start and end
   // configuration of search problem
+  // 弄check_start_index这个变量出来是为了区分始末节点和中间节点
+  // 所以叫 check_start_end_index 其实更贴切
+  // 因为始末节点的node_step_size为1，而中间节点的node_step_size大于1（最小是2）
+  // 而中间节点的第一步是不用做碰撞检测的，因为第一步就是原地不动的位置
+  // 原地这个位置肯定是之前节点中计算过满足碰撞条件的，否则也不可能到这个位置来
+  // 所以为了避免重复运算，引入了check_start_index
   size_t check_start_index = 0;
   if (node_step_size == 1) {
     check_start_index = 0;
@@ -107,6 +115,8 @@ bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
     check_start_index = 1;
   }
 
+  // 这里用for循环是因为，一个子节点在扩展过程中，可能是经过了几小步来的，这里
+  // 要检查每一小步是否都满足条件
   for (size_t i = check_start_index; i < node_step_size; ++i) {
     if (traversed_x[i] > XYbounds_[1] || traversed_x[i] < XYbounds_[0] ||
         traversed_y[i] > XYbounds_[3] || traversed_y[i] < XYbounds_[2]) {
@@ -217,7 +227,10 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
       intermediate_y.back() < XYbounds_[2]) {
     return nullptr;
   }
-  // node3d 有重载，可以直接用vector生成，会自动取vector中最后一个
+  // node3d 有重载，可以直接用vector生成，会自动取vector中最后一个,并用step_size_这个
+  // 类变量记录下，这最后一个是经过几小步来的。注意这里的step_size_和上面全局那个step_size_
+  // 是不一样的，上面那个是通过配置文件给定的，记录的是每一小步走的距离，而node下的step_size_
+  // 其实记录的是走了几小步，其实应该叫step_num_会更准确，不易混淆
   std::shared_ptr<Node3d> next_node = std::shared_ptr<Node3d>(
       new Node3d(intermediate_x, intermediate_y, intermediate_phi, XYbounds_,
                  planner_open_space_config_));

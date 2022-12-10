@@ -161,19 +161,24 @@ double Box2d::DistanceTo(const Vec2d &point) const {
   if (dy <= 0.0) {
     return dx;
   }
+  // 计算三角行的斜边长度
   return hypot(dx, dy);
 }
 
 bool Box2d::HasOverlap(const LineSegment2d &line_segment) const {
+  // 如果线段的长度特别小，小于极小值，这里是1的负10次方，那么判断线段起点在不在box内
+  // kMathEpsilon是一个常数，表示极小值
   if (line_segment.length() <= kMathEpsilon) {
     return IsPointIn(line_segment.start());
   }
+  // 如果满足以下条件之一，则表示一定box和线段一定不相交
   if (std::fmax(line_segment.start().x(), line_segment.end().x()) < min_x() ||
       std::fmin(line_segment.start().x(), line_segment.end().x()) > max_x() ||
       std::fmax(line_segment.start().y(), line_segment.end().y()) < min_y() ||
       std::fmin(line_segment.start().y(), line_segment.end().y()) > max_y()) {
     return false;
   }
+  // 如果上述条件不满足，则需要复杂计算线段于矩形是否相交
   return DistanceTo(line_segment) <= kMathEpsilon;
 }
 

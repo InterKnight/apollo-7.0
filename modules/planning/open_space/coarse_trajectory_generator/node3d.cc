@@ -43,12 +43,15 @@ Node3d::Node3d(double x, double y, double phi,
   y_ = y;
   phi_ = phi;
 
+// x方向处于第几个格子
   x_grid_ = static_cast<int>(
       (x_ - XYbounds[0]) /
       open_space_conf.warm_start_config().xy_grid_resolution());
+// y方向处于第几个格子
   y_grid_ = static_cast<int>(
       (y_ - XYbounds[2]) /
       open_space_conf.warm_start_config().xy_grid_resolution());
+// 角度这个维度上也有刻度, 应为加了PI，所以推断phi原本的范围是[-PI, PI]
   phi_grid_ = static_cast<int>(
       (phi_ - (-M_PI)) /
       open_space_conf.warm_start_config().phi_grid_resolution());
@@ -90,6 +93,7 @@ Node3d::Node3d(const std::vector<double>& traversed_x,
   traversed_phi_ = traversed_phi;
 
   index_ = ComputeStringIndex(x_grid_, y_grid_, phi_grid_);
+  // 在这改变了默认的step_size_的值，使得它不再是1，而是实际走了几小步的数量
   step_size_ = traversed_x.size();
 }
 
