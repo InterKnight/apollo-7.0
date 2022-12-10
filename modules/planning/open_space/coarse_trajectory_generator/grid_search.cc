@@ -44,9 +44,12 @@ bool GridSearch::CheckConstraints(std::shared_ptr<Node2d> node) {
   if (obstacles_linesegments_vec_.empty()) {
     return true;
   }
+  // 在for ： 中加引用的话，就不会创造临时数据了，会加快程序运行速度
+  // 并且要更改原变量的值的话，必须加引用，否则做的所有操作都不会影响原变量
   for (const auto& obstacle_linesegments : obstacles_linesegments_vec_) {
     for (const common::math::LineSegment2d& linesegment :
          obstacle_linesegments) {
+      // 当线段距离网格小于某个设定值时，认为两者碰撞了，这里默认0.5
       if (linesegment.DistanceTo({node->GetGridX(), node->GetGridY()}) <
           node_radius_) {
         return false;
@@ -135,9 +138,11 @@ bool GridSearch::GenerateAStarPath(
     std::vector<std::shared_ptr<Node2d>> next_nodes =
         std::move(GenerateNextNodes(current_node));
     for (auto& next_node : next_nodes) {
+      // 判断是否出界或者碰撞
       if (!CheckConstraints(next_node)) {
         continue;
       }
+      // 如果节点已经探索过，则忽略
       if (close_set.find(next_node->GetIndex()) != close_set.end()) {
         continue;
       }
@@ -194,9 +199,11 @@ bool GridSearch::GenerateDpMap(
       if (!CheckConstraints(next_node)) {
         continue;
       }
+      // 如果这个节点已经加入过 dp_map_ ,则忽略
       if (dp_map_.find(next_node->GetIndex()) != dp_map_.end()) {
         continue;
       }
+      // 如果没有探索过
       if (open_set.find(next_node->GetIndex()) == open_set.end()) {
         ++explored_node_num;
         next_node->SetPreNode(current_node);

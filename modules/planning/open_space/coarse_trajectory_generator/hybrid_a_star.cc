@@ -707,7 +707,7 @@ bool HybridAStar::Plan(
     // 得到该障碍物的所有边
     obstacles_linesegments_vec.emplace_back(obstacle_linesegments);
   }
-  // 不知道这个是干嘛用的，右值引用
+  // 这个是干嘛用的？右值引用
   obstacles_linesegments_vec_ = std::move(obstacles_linesegments_vec);
   // load XYbounds
   XYbounds_ = XYbounds;
@@ -725,8 +725,14 @@ bool HybridAStar::Plan(
     return false;
   }
 
-  //使用动态规划DP来计算目标点到某点的启发代价（以目标点为DP的起点），按之前的资料，这里的dp应该是经典A*，待确认
-  //生成graph的同时获得了目标点到图中任一点的cost，后续只需要查表，空间换时间
+  // f = g + h，在apollo中变量名称是：
+  // cost_ = path_cost_ + heuristic_
+  // 使用经典A*来计算目标点到图中任一点的path_cost
+  // 相当于把地图里每个点都跑了一遍，知道了到每个点的距离
+  // 生成一个dp_map,这里的dp是动态规划的意思。这个dp_map是一个unordered map
+  // 里面记录了一个二维网格地图中所有的格子，也就是所有节点，每一个节点上都有
+  // 它到终点的path_cost，后续只需要查表，空间换时间
+  // 如何保证这个方法只调用一次？
   double map_time = Clock::NowInSeconds();
   grid_a_star_heuristic_generator_->GenerateDpMap(ex, ey, XYbounds_,
                                                   obstacles_linesegments_vec_);
@@ -735,9 +741,10 @@ bool HybridAStar::Plan(
   // 用emplace比push效率高，并且用push的话，需要写成 make_pair(next_node->GetIndex(), next_node)，多一个make_pair
   // open_set_是一个unordered_map的类型，用这个是因为这种键值对的形式比较方便，不需要排序所以用unordered可能节省资源。
   // open_pq_现在是pq的类型，主要是要有序这个特性。虽然set也可以有序，但是pq比set快，set多了一个唯一的属性
+  // open_pq_的排序规则是自定义的，是按cost排序的
   open_set_.emplace(start_node_->GetIndex(), start_node_);
   open_pq_.emplace(start_node_->GetIndex(), start_node_->GetCost());
-  // GetIndex()返回的是一个string，类似 "x_y"
+  // GetIndex()返回的是一个string，类似 "x_y_phi"
   // Hybrid A* begins
   size_t explored_node_num = 0;
   double astar_start_time = Clock::NowInSeconds();

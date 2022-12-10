@@ -29,9 +29,11 @@
 #include <vector>
 
 #include "absl/strings/str_cat.h"
+
+#include "modules/planning/proto/planner_open_space_config.pb.h"
+
 #include "cyber/common/log.h"
 #include "modules/common/math/line_segment2d.h"
-#include "modules/planning/proto/planner_open_space_config.pb.h"
 
 namespace apollo {
 namespace planning {
@@ -51,6 +53,8 @@ class Node2d {
     grid_y_ = grid_y;
     index_ = ComputeStringIndex(grid_x_, grid_y_);
   }
+  // f = g + h，在apollo中变量名称是：
+  // cost_ = path_cost_ + heuristic_
   void SetPathCost(const double path_cost) {
     path_cost_ = path_cost;
     cost_ = path_cost_ + heuristic_;
