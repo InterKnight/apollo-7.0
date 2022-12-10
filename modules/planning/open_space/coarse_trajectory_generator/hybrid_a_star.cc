@@ -221,6 +221,7 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
     last_phi = next_phi;
   }
   // check if the vehicle runs outside of XY boundary
+  // 感觉这里没有必要检查，因为在后面的ValidityCheck中还会检查是否出界了，这里感觉重复了？
   if (intermediate_x.back() > XYbounds_[1] ||
       intermediate_x.back() < XYbounds_[0] ||
       intermediate_y.back() > XYbounds_[3] ||
@@ -242,29 +243,37 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
 
 void HybridAStar::CalculateNodeCost(std::shared_ptr<Node3d> current_node,
                                     std::shared_ptr<Node3d> next_node) {
+  // 子节点的历史代价 = 父节点的历史代价 + 父节点到子节点的代价
   next_node->SetTrajCost(current_node->GetTrajCost() +
                          TrajCost(current_node, next_node));
   // evaluate heuristic cost
+  // 加了一个常量，不过这里是0，如果改大，则会加大启发代价，使的搜索过程更效率而轻质量
   double optimal_path_cost = 0.0;
+  // 查表获得子节点到终点的距离
   optimal_path_cost += HoloObstacleHeuristic(next_node);
   next_node->SetHeuCost(optimal_path_cost);
 }
 
+// 计算历史代价，将方向，转向等因素考虑其中，不是单纯的距离
 double HybridAStar::TrajCost(std::shared_ptr<Node3d> current_node,
                              std::shared_ptr<Node3d> next_node) {
   // evaluate cost on the trajectory and add current cost
   double piecewise_cost = 0.0;
   if (next_node->GetDirec()) {
+    // 走的步数 * 每一步的距离 * 前向惩罚系数。减一是因为步数里包含原地那一步
     piecewise_cost += static_cast<double>(next_node->GetStepSize() - 1) *
                       step_size_ * traj_forward_penalty_;
   } else {
     piecewise_cost += static_cast<double>(next_node->GetStepSize() - 1) *
                       step_size_ * traj_back_penalty_;
   }
+  // 切换方向的惩罚
   if (current_node->GetDirec() != next_node->GetDirec()) {
     piecewise_cost += traj_gear_switch_penalty_;
   }
+  // 转向惩罚，尽量不转向，默认是0
   piecewise_cost += traj_steer_penalty_ * std::abs(next_node->GetSteer());
+  // 转向差值惩罚，转向插值尽量小,默认是0
   piecewise_cost += traj_steer_change_penalty_ *
                     std::abs(next_node->GetSteer() - current_node->GetSteer());
   return piecewise_cost;
@@ -292,9 +301,11 @@ bool HybridAStar::GetResult(HybridAStartResult* result) {
       AERROR << "states sizes are not equal";
       return false;
     }
+    // 将容器的顺序反转
     std::reverse(x.begin(), x.end());
     std::reverse(y.begin(), y.end());
     std::reverse(phi.begin(), phi.end());
+    // 这里去掉最后一个是因为和前一个节点的最后一个重复了
     x.pop_back();
     y.pop_back();
     phi.pop_back();
@@ -303,10 +314,12 @@ bool HybridAStar::GetResult(HybridAStartResult* result) {
     hybrid_a_phi.insert(hybrid_a_phi.end(), phi.begin(), phi.end());
     current_node = current_node->GetPreNode();
   }
+  // 此时的current_node就是start node了
   hybrid_a_x.push_back(current_node->GetX());
   hybrid_a_y.push_back(current_node->GetY());
   hybrid_a_phi.push_back(current_node->GetPhi());
   std::reverse(hybrid_a_x.begin(), hybrid_a_x.end());
+  // 再反转一次变成正序
   std::reverse(hybrid_a_y.begin(), hybrid_a_y.end());
   std::reverse(hybrid_a_phi.begin(), hybrid_a_phi.end());
   (*result).x = hybrid_a_x;
@@ -777,6 +790,7 @@ bool HybridAStar::Plan(
         continue;
       }
       // collision check
+      // 其实不止是碰撞检测，还有检测出界
       if (!ValidityCheck(next_node)) {
         continue;
       }
@@ -785,12 +799,15 @@ bool HybridAStar::Plan(
         const double start_time = Clock::NowInSeconds();
         CalculateNodeCost(current_node, next_node);
         const double end_time = Clock::NowInSeconds();
+        // 这里叫heuristic_time其实不准确，这个过程包含两部分，f和h
+        // 其中f需要计算，h直接查表
         heuristic_time += end_time - start_time;
         open_set_.emplace(next_node->GetIndex(), next_node);
         open_pq_.emplace(next_node->GetIndex(), next_node->GetCost());
       }
     }
   }
+  // 这里final_node_只能通过RS曲线获得
   if (final_node_ == nullptr) {
     ADEBUG << "Hybrid A searching return null ptr(open_set ran out)";
     return false;
