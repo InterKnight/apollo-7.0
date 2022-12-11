@@ -94,7 +94,7 @@ bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
     return true;
   }
 
-  // 这里的node_step_size和全局的不一样，这里的默认是1，不知道这里的是干嘛用的？
+  // 这里的node_step_size和全局的不一样，这里记录的是走了多少小步,应该叫node_step_num更贴切
   size_t node_step_size = node->GetStepSize();
   const auto& traversed_x = node->GetXs();
   const auto& traversed_y = node->GetYs();
@@ -250,6 +250,8 @@ void HybridAStar::CalculateNodeCost(std::shared_ptr<Node3d> current_node,
   // 加了一个常量，不过这里是0，如果改大，则会加大启发代价，使的搜索过程更效率而轻质量
   double optimal_path_cost = 0.0;
   // 查表获得子节点到终点的距离
+  // 在算法说明中，h应该取h1和h2之间较大的那个，但是这里只有h2，为什么？
+  // h1是考虑动力学，不考虑障碍物；h2是考虑障碍物，不考虑动力学
   optimal_path_cost += HoloObstacleHeuristic(next_node);
   next_node->SetHeuCost(optimal_path_cost);
 }
@@ -289,6 +291,7 @@ bool HybridAStar::GetResult(HybridAStartResult* result) {
   std::vector<double> hybrid_a_x;
   std::vector<double> hybrid_a_y;
   std::vector<double> hybrid_a_phi;
+  // 只有start node 的pre node是nullptr
   while (current_node->GetPreNode() != nullptr) {
     std::vector<double> x = current_node->GetXs();
     std::vector<double> y = current_node->GetYs();
@@ -326,6 +329,7 @@ bool HybridAStar::GetResult(HybridAStartResult* result) {
   (*result).y = hybrid_a_y;
   (*result).phi = hybrid_a_phi;
 
+  // 计算轨迹上每个点的速度，加速度，前轮转角
   if (!GetTemporalProfile(result)) {
     AERROR << "GetSpeedProfile from Hybrid Astar path fails";
     return false;
@@ -340,6 +344,7 @@ bool HybridAStar::GetResult(HybridAStartResult* result) {
            << "result->v.size()" << result->v.size();
     return false;
   }
+  // 因为终点没有a和steer，所以比x少1
   if (result->a.size() != result->steer.size() ||
       result->x.size() - result->a.size() != 1) {
     AERROR << "control sizes not equal or not right";
@@ -351,6 +356,7 @@ bool HybridAStar::GetResult(HybridAStartResult* result) {
   return true;
 }
 
+// 从轨迹中获取速度，加速度，前轮转角
 bool HybridAStar::GenerateSpeedAcceleration(HybridAStartResult* result) {
   // Sanity Check
   if (result->x.size() < 2 || result->y.size() < 2 || result->phi.size() < 2) {
@@ -361,8 +367,15 @@ bool HybridAStar::GenerateSpeedAcceleration(HybridAStartResult* result) {
 
   // load velocity from position
   // initial and end speed are set to be zeros
+  // 起点和终点的速度都是0, 这里的起点终点并不是整个轨迹的起点，终点
+  // 而是每段轨迹的起点终点，因为是按前进后退来分段的，所以在前进和后退
+  // 之间切换时，速度一定是0
   result->v.push_back(0.0);
   for (size_t i = 1; i + 1 < x_size; ++i) {
+    // 这里为什么不是取平方和再开根号（hypot），而是直接相加？难道是降低运算量？
+    // 这里delta_t默认是0.5，那就代表着在apollo认为在delta_t的时间范围内，走了step_size的距离
+    // 也就是在0.5s内，走了0.25m，这其实就能算速度是0.5m/s^2，这个显然不是一个普适的值
+    // 然后他又用这个距离来反推速度，这显然是矛盾的？
     double discrete_v = (((result->x[i + 1] - result->x[i]) / delta_t_) *
                              std::cos(result->phi[i]) +
                          ((result->x[i] - result->x[i - 1]) / delta_t_) *
@@ -378,12 +391,25 @@ bool HybridAStar::GenerateSpeedAcceleration(HybridAStartResult* result) {
   result->v.push_back(0.0);
 
   // load acceleration from velocity
+  // 每一段的终点没有加速度，因为会在下一段的起点给他赋值
+  // 但这会造成，最后那段的终点，也就是整段轨迹的终点没有加速度
+  // 为什么没有像速度那样取前后两个点，而是只取了前面的点？
   for (size_t i = 0; i + 1 < x_size; ++i) {
     const double discrete_a = (result->v[i + 1] - result->v[i]) / delta_t_;
     result->a.push_back(discrete_a);
   }
 
   // load steering from phi
+  // 这个steer是前轮转角，但是这又矛盾了，前轮转角前面已经通过最大前轮转角乘以系数后离散化得到了
+  // 为什么还要求一遍？并且原来的的phi就是通过steer求的，现在又用phi求steer？
+  // 每一段的终点没有前轮转角，因为会在下一段的起点给他赋值
+  // 但这会造成，最后那段的终点，也就是整段轨迹的终点没有前轮转角
+    /******************************************************************************
+    * next_phi = last_phi + ω*dt      \
+    *                                   ----> next_phi = last_phi + v/L*tan(δ)*dt
+    * ω = v/R = v/L*tan(δ) 自行车模型  /                = last_phi + v*dt /L*tan(δ)
+    *                                                  = last_phi + step_size_ /L*tan(δ)
+    *******************************************************************************/
   for (size_t i = 0; i + 1 < x_size; ++i) {
     double discrete_steer = (result->phi[i + 1] - result->phi[i]) *
                             vehicle_param_.wheel_base() / step_size_;
@@ -591,6 +617,8 @@ bool HybridAStar::GenerateSCurveSpeedAcceleration(HybridAStartResult* result) {
   return true;
 }
 
+// 轨迹分段，方向相同的为一段，比如先前进再后退，这就是两段
+// 分段后便于求得各段轨迹的速度，加速度，前轮转角
 bool HybridAStar::TrajectoryPartition(
     const HybridAStartResult& result,
     std::vector<HybridAStartResult>* partitioned_result) {
@@ -603,13 +631,16 @@ bool HybridAStar::TrajectoryPartition(
     return false;
   }
 
+  // 一共走了多少步
   size_t horizon = x.size();
   partitioned_result->clear();
   partitioned_result->emplace_back();
   auto* current_traj = &(partitioned_result->back());
+  // 起点 start node 的phi，也就是heading
   double heading_angle = phi.front();
   const Vec2d init_tracking_vector(x[1] - x[0], y[1] - y[0]);
   double tracking_angle = init_tracking_vector.Angle();
+  // true为前进，false为后退
   bool current_gear =
       std::abs(common::math::NormalizeAngle(tracking_angle - heading_angle)) <
       (M_PI_2);
@@ -620,6 +651,15 @@ bool HybridAStar::TrajectoryPartition(
     bool gear =
         std::abs(common::math::NormalizeAngle(tracking_angle - heading_angle)) <
         (M_PI_2);
+    // 分段的时候，前一段的终点和后一段的起点是同一个点，也就是那一点存在于两段轨迹中
+/*     0 -- 1 -- 2     [0, 1, 2] 是第一段
+                /      [2, 3, 4] 是第二段
+               /
+              3
+             /
+            /
+           4 
+*/     
     if (gear != current_gear) {
       current_traj->x.push_back(x[i]);
       current_traj->y.push_back(y[i]);
@@ -632,6 +672,7 @@ bool HybridAStar::TrajectoryPartition(
     current_traj->y.push_back(y[i]);
     current_traj->phi.push_back(phi[i]);
   }
+  // 对最后一个特殊处理，因为它没有下一个了，不能放在循环里
   current_traj->x.push_back(x.back());
   current_traj->y.push_back(y.back());
   current_traj->phi.push_back(phi.back());
@@ -639,8 +680,11 @@ bool HybridAStar::TrajectoryPartition(
   const auto start_timestamp = std::chrono::system_clock::now();
 
   // Retrieve v, a and steer from path
+  // 从轨迹中获取速度，加速度和steer
   for (auto& result : *partitioned_result) {
+    // 默认是false
     if (FLAGS_use_s_curve_speed_smooth) {
+      // 用piecewise jerk来获取相应值，计算量更大
       if (!GenerateSCurveSpeedAcceleration(&result)) {
         AERROR << "GenerateSCurveSpeedAcceleration fail";
         return false;
@@ -655,16 +699,22 @@ bool HybridAStar::TrajectoryPartition(
 
   const auto end_timestamp = std::chrono::system_clock::now();
   std::chrono::duration<double> diff = end_timestamp - start_timestamp;
+  // 从轨迹中获取速度，加速度和steer的时间，其实不止是速度
   ADEBUG << "speed profile total time: " << diff.count() * 1000.0 << " ms.";
   return true;
 }
 
+// 将轨迹分段，计算速度，加速度，前轮转角后，再将轨迹拼接起来
 bool HybridAStar::GetTemporalProfile(HybridAStartResult* result) {
   std::vector<HybridAStartResult> partitioned_results;
+  // 将轨迹分段，并且计算每个点的速度，加速度，前轮转角
+  // 分段是为了更好计算每段的速度，加速度，前轮转角，因为每一段的
+  // 衔接处的速度一定为0
   if (!TrajectoryPartition(*result, &partitioned_results)) {
     AERROR << "TrajectoryPartition fail";
     return false;
   }
+  // 将分成多段的轨迹再拼在一起
   HybridAStartResult stitched_result;
   for (const auto& result : partitioned_results) {
     std::copy(result.x.begin(), result.x.end() - 1,
@@ -675,11 +725,13 @@ bool HybridAStar::GetTemporalProfile(HybridAStartResult* result) {
               std::back_inserter(stitched_result.phi));
     std::copy(result.v.begin(), result.v.end() - 1,
               std::back_inserter(stitched_result.v));
+    // 因为每一小段的终点都没有a和steer，所以不用减一
     std::copy(result.a.begin(), result.a.end(),
               std::back_inserter(stitched_result.a));
     std::copy(result.steer.begin(), result.steer.end(),
               std::back_inserter(stitched_result.steer));
   }
+  // 补一下终点的数据
   stitched_result.x.push_back(partitioned_results.back().x.back());
   stitched_result.y.push_back(partitioned_results.back().y.back());
   stitched_result.phi.push_back(partitioned_results.back().phi.back());
@@ -713,6 +765,9 @@ bool HybridAStar::Plan(
     // 依次对该障碍物的每个边读取
     for (size_t i = 0; i < vertices_num - 1; ++i) {
       // 遍历各个顶点得到边，这里应该少了end至start的情况
+      // 推测少的原因是：会将目标车位的4条边也当成障碍物的
+      // 轮廓进行碰撞检测。这里留一条边的原因就是让车可以从
+      // 那条边进入车库？
       common::math::LineSegment2d line_segment = common::math::LineSegment2d(
           obstacle_vertices[i], obstacle_vertices[i + 1]);
       obstacle_linesegments.emplace_back(line_segment);
