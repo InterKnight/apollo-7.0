@@ -812,7 +812,6 @@ bool HybridAStar::Plan(
   // 生成一个dp_map,这里的dp是动态规划的意思。这个dp_map是一个unordered map
   // 里面记录了一个二维网格地图中所有的格子，也就是所有节点，每一个节点上都有
   // 它到终点的path_cost，后续只需要查表，空间换时间
-  // 如何保证这个方法只调用一次？
   double map_time = Clock::NowInSeconds();
   grid_a_star_heuristic_generator_->GenerateDpMap(ex, ey, XYbounds_,
                                                   obstacles_linesegments_vec_);
@@ -841,6 +840,7 @@ bool HybridAStar::Plan(
     // 用RS曲线试试运气，运气爆棚可以到达终点，则搜索结束，理论上这不应该每次都试把？
     // 推测可能是因为每次开始用混合A*搜索路径时，车辆离车位已经很近了，默认5m左右，
     // 所以这时候应该很快能找到合适路径，每次都试也可以
+    
     // 在简单无障碍物的环境下测试了一下，改成2个点算一次（explored_node_num % 2 == 0）后，
     // rs_time减小了，explored_node_num基本不变，总时间减小约20%
     // 但整个混合A*不稳定，多次跑的结果不一致，差距大于20%，所以改的意义也不大
