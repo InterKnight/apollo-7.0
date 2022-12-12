@@ -222,6 +222,7 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
   }
   // check if the vehicle runs outside of XY boundary
   // 感觉这里没有必要检查，因为在后面的ValidityCheck中还会检查是否出界了，这里感觉重复了？
+  // 注释掉之后对总时间几乎没有影响，这段不太消耗资源
   if (intermediate_x.back() > XYbounds_[1] ||
       intermediate_x.back() < XYbounds_[0] ||
       intermediate_y.back() > XYbounds_[3] ||
@@ -252,6 +253,8 @@ void HybridAStar::CalculateNodeCost(std::shared_ptr<Node3d> current_node,
   // 查表获得子节点到终点的距离
   // 在算法说明中，h应该取h1和h2之间较大的那个，但是这里只有h2，为什么？
   // h1是考虑动力学，不考虑障碍物；h2是考虑障碍物，不考虑动力学
+  // 在没有障碍物的简单场景下测试，增加h1之后对总时间没有影响
+  // h1=reeds_shepp_to_check->total_length
   optimal_path_cost += HoloObstacleHeuristic(next_node);
   next_node->SetHeuCost(optimal_path_cost);
 }
@@ -838,6 +841,9 @@ bool HybridAStar::Plan(
     // 用RS曲线试试运气，运气爆棚可以到达终点，则搜索结束，理论上这不应该每次都试把？
     // 推测可能是因为每次开始用混合A*搜索路径时，车辆离车位已经很近了，默认5m左右，
     // 所以这时候应该很快能找到合适路径，每次都试也可以
+    // 在简单无障碍物的环境下测试了一下，改成2个点算一次（explored_node_num % 2 == 0）后，
+    // rs_time减小了，explored_node_num基本不变，总时间减小约20%
+    // 但整个混合A*不稳定，多次跑的结果不一致，差距大于20%
     const double rs_start_time = Clock::NowInSeconds();
     if (AnalyticExpansion(current_node)) {
       break;
@@ -882,6 +888,8 @@ bool HybridAStar::Plan(
     ADEBUG << "GetResult failed";
     return false;
   }
+  // 在简单无障碍物的环境下测试了一下，耗时在1~2s之间存在波动，前3名分别是 AnalyticExpansion > Next_node_generator > ValidityCheck
+  // 但随着障碍物数量的增多，ValidityCheck势必耗时会增加
   ADEBUG << "explored node num is " << explored_node_num;
   ADEBUG << "heuristic time is " << heuristic_time;
   ADEBUG << "reed shepp time is " << rs_time;
