@@ -167,6 +167,7 @@ bool GridSearch::GenerateAStarPath(
   return true;
 }
 
+// djkstra算法
 bool GridSearch::GenerateDpMap(
     const double ex, const double ey, const std::vector<double>& XYbounds,
     const std::vector<std::vector<common::math::LineSegment2d>>&

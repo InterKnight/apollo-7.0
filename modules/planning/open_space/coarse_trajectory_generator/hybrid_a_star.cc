@@ -372,10 +372,13 @@ bool HybridAStar::GenerateSpeedAcceleration(HybridAStartResult* result) {
   // 之间切换时，速度一定是0
   result->v.push_back(0.0);
   for (size_t i = 1; i + 1 < x_size; ++i) {
-    // 这里为什么不是取平方和再开根号（hypot），而是直接相加？难道是降低运算量？
+    // 这里其实是将速度分解为x向和y向的，然后再相加
+    // 还可以用取平方和再开根号（hypot）的方式，可能运算量比求三角函数大把
     // 这里delta_t默认是0.5，那就代表着在apollo认为在delta_t的时间范围内，走了step_size的距离
     // 也就是在0.5s内，走了0.25m，这其实就能算速度是0.5m/s^2，这个显然不是一个普适的值
     // 然后他又用这个距离来反推速度，这显然是矛盾的？
+    // 因为这些点不关是通过常规的扩展子节点而来，如果是这样来的，那根据之前的假设，
+    // 速度确实是已知。但这些点还有可能通过RS曲线来，通过RS曲线来的点可能速度就是未知的。
     double discrete_v = (((result->x[i + 1] - result->x[i]) / delta_t_) *
                              std::cos(result->phi[i]) +
                          ((result->x[i] - result->x[i - 1]) / delta_t_) *
@@ -402,6 +405,9 @@ bool HybridAStar::GenerateSpeedAcceleration(HybridAStartResult* result) {
   // load steering from phi
   // 这个steer是前轮转角，但是这又矛盾了，前轮转角前面已经通过最大前轮转角乘以系数后离散化得到了
   // 为什么还要求一遍？并且原来的的phi就是通过steer求的，现在又用phi求steer？
+  // 因为这些点不关是通过常规的扩展子节点而来，如果是这样来的，那根据之前的假设，
+  // 前轮转角确实是已知。但这些点还有可能通过RS曲线来，通过RS曲线来的点可能速度就是未知的。
+
   // 每一段的终点没有前轮转角，因为会在下一段的起点给他赋值
   // 但这会造成，最后那段的终点，也就是整段轨迹的终点没有前轮转角
     /******************************************************************************
@@ -795,8 +801,11 @@ bool HybridAStar::Plan(
 
   // f = g + h，在apollo中变量名称是：
   // cost_ = path_cost_ + heuristic_
-  // 使用经典A*来计算目标点到图中任一点的path_cost
+  // 使用djkstra算法来计算目标点到图中任一点的path_cost
   // 相当于把地图里每个点都跑了一遍，知道了到每个点的距离
+  // 为什么不用经典A*呢，因为经典A*适合点到点的最短距离，
+  // 想起点到所有点的距离，用dijkstra更合适
+  // dijkstra相当与把经典A*中 f=g+h中的h设为0，也就是不启发
   // 生成一个dp_map,这里的dp是动态规划的意思。这个dp_map是一个unordered map
   // 里面记录了一个二维网格地图中所有的格子，也就是所有节点，每一个节点上都有
   // 它到终点的path_cost，后续只需要查表，空间换时间
@@ -827,6 +836,8 @@ bool HybridAStar::Plan(
     // configuration to the end configuration without collision. if so, search
     // ends.
     // 用RS曲线试试运气，运气爆棚可以到达终点，则搜索结束，理论上这不应该每次都试把？
+    // 推测可能是因为每次开始用混合A*搜索路径时，车辆离车位已经很近了，默认5m左右，
+    // 所以这时候应该很快能找到合适路径，每次都试也可以
     const double rs_start_time = Clock::NowInSeconds();
     if (AnalyticExpansion(current_node)) {
       break;
