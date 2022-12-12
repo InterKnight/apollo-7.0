@@ -843,7 +843,9 @@ bool HybridAStar::Plan(
     // 所以这时候应该很快能找到合适路径，每次都试也可以
     // 在简单无障碍物的环境下测试了一下，改成2个点算一次（explored_node_num % 2 == 0）后，
     // rs_time减小了，explored_node_num基本不变，总时间减小约20%
-    // 但整个混合A*不稳定，多次跑的结果不一致，差距大于20%
+    // 但整个混合A*不稳定，多次跑的结果不一致，差距大于20%，所以改的意义也不大
+    // 在简单无障碍物的环境下测试了一下，改成10个点算一次（explored_node_num % 10 == 0）后，
+    // 无法计算出路径
     const double rs_start_time = Clock::NowInSeconds();
     if (AnalyticExpansion(current_node)) {
       break;
