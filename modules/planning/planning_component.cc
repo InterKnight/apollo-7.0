@@ -115,6 +115,7 @@ bool PlanningComponent::Init() {
   return true;
 }
 
+// cyber 是在哪里设置什么时候调用这Proc的
 bool PlanningComponent::Proc(
     const std::shared_ptr<prediction::PredictionObstacles>&
         prediction_obstacles,

@@ -784,7 +784,10 @@ bool HybridAStar::Plan(
     // 得到该障碍物的所有边
     obstacles_linesegments_vec.emplace_back(obstacle_linesegments);
   }
-  // 这个是干嘛用的？右值引用
+  // 如果只是简单的赋值，那么在赋值过程中，将进行多次拷贝。
+  // 使用std::move之后，可以将原来的左值obstacles_linesegments_vec转化成右值
+  // 然后就可以使用右值引用的移动语义特性，降低计算消耗
+  // 这样之后obstacles_linesegments_vec 里面将会是空的
   obstacles_linesegments_vec_ = std::move(obstacles_linesegments_vec);
   // load XYbounds
   XYbounds_ = XYbounds;
