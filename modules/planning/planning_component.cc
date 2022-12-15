@@ -44,6 +44,9 @@ bool PlanningComponent::Init() {
   if (FLAGS_use_navigation_mode) {
     planning_base_ = std::make_unique<NaviPlanning>(injector_);
   } else {
+    // 这创建了一个对象，会调用OnLanePlanning的构造函数
+    // planning_base_ 是指向PlanningBase的指针，但是这里
+    // 指向了他的子类 OnLanePlanning
     planning_base_ = std::make_unique<OnLanePlanning>(injector_);
   }
 
@@ -59,8 +62,13 @@ bool PlanningComponent::Init() {
     }
   }
 
+  // 这里用了多态，但是vscode的跳转有问题，不能跳转到
+  // 正确的函数上，要小心
+  // 现在planning_base_实际指向的是OnLanePlanning类型
+  // 但vscode仍任务它指向的是PlanningBase类型
   planning_base_->Init(config_);
 
+  // 语法解析？
   routing_reader_ = node_->CreateReader<RoutingResponse>(
       config_.topic_config().routing_response_topic(),
       [this](const std::shared_ptr<RoutingResponse>& routing) {
@@ -131,6 +139,7 @@ bool PlanningComponent::Proc(
   local_view_.prediction_obstacles = prediction_obstacles;
   local_view_.chassis = chassis;
   local_view_.localization_estimate = localization_estimate;
+  // 为什么要锁？
   {
     std::lock_guard<std::mutex> lock(mutex_);
     if (!local_view_.routing ||
@@ -187,11 +196,13 @@ bool PlanningComponent::Proc(
   }
 
   ADCTrajectory adc_trajectory_pb;
+  // 这里的RunOnce是OnLanePlanning::RunOnce
   planning_base_->RunOnce(local_view_, &adc_trajectory_pb);
   auto start_time = adc_trajectory_pb.header().timestamp_sec();
   common::util::FillHeader(node_->Name(), &adc_trajectory_pb);
 
   // modify trajectory relative time due to the timestamp change in header
+  // 补偿设置header所用的时间，这个时间应该很短才对啊？
   const double dt = start_time - adc_trajectory_pb.header().timestamp_sec();
   for (auto& p : *adc_trajectory_pb.mutable_trajectory_point()) {
     p.set_relative_time(p.relative_time() + dt);

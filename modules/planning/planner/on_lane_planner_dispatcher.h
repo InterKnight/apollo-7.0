@@ -33,6 +33,7 @@ namespace planning {
  *
  * @brief PlannerDispatcher module main class.
  */
+// final 表示这个类不允许被继承
 class OnLanePlannerDispatcher final : public PlannerDispatcher {
  public:
   OnLanePlannerDispatcher() = default;

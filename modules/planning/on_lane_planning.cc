@@ -261,6 +261,7 @@ void OnLanePlanning::RunOnce(const LocalView& local_view,
   // module maintains not-ready until be restarted.
   static bool failed_to_update_reference_line = false;
   local_view_ = local_view;
+  // 这两个时间有什么区别？
   const double start_timestamp = Clock::NowInSeconds();
   const double start_system_timestamp =
       std::chrono::duration<double>(
@@ -352,6 +353,9 @@ void OnLanePlanning::RunOnce(const LocalView& local_view,
   const double planning_cycle_time =
       1.0 / static_cast<double>(FLAGS_planning_loop_rate);
 
+// planning里面的轨迹虽然是实时的，但是会截取上一时刻的轨迹点作为当前周期轨迹的前半段，
+// 但是当车辆跟踪偏差比较大，或者是所匹配的上衣周期的轨迹点丢失时，就需要重规划，
+// 这个时候就以当前车辆位置作为规划的起始点
   std::string replan_reason;
   std::vector<TrajectoryPoint> stitching_trajectory =
       TrajectoryStitcher::ComputeStitchingTrajectory(
@@ -403,6 +407,7 @@ void OnLanePlanning::RunOnce(const LocalView& local_view,
     return;
   }
 
+// 交通规则
   for (auto& ref_line_info : *frame_->mutable_reference_line_info()) {
     TrafficDecider traffic_decider;
     traffic_decider.Init(traffic_rule_configs_);
@@ -414,6 +419,7 @@ void OnLanePlanning::RunOnce(const LocalView& local_view,
             << " traffic decider failed";
     }
   }
+  // 依据decider和optimizer进行规划
   status = Plan(start_timestamp, stitching_trajectory, ptr_trajectory_pb);
   for (const auto& p : ptr_trajectory_pb->trajectory_point()) {
     ADEBUG << p.DebugString();
