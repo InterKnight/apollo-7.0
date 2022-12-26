@@ -127,6 +127,7 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
 
   if (FLAGS_enable_parallel_trajectory_smoothing) {
     std::vector<HybridAStartResult> partition_trajectories;
+    // 将轨迹分段
     if (!warm_start_->TrajectoryPartition(result, &partition_trajectories)) {
       return Status(ErrorCode::PLANNING_ERROR, "Hybrid Astar partition failed");
     }
@@ -166,11 +167,13 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
               << xWS_vec[i].col(xWS_vec[i].cols() - 1).transpose();
       }
 
+      // 转角和加速度
       Eigen::MatrixXd last_time_u(2, 1);
       double init_v = 0.0;
       // Stitching point control and velocity is set for first piece of
       // trajectories. In the next ones, control and velocity are assumed to be
       // zero as the next trajectories always start from vehicle static state
+      // 除了第一段，其他段轨迹的初始点都是从静止开始的
       if (i == 0) {
         const double init_steer = trajectory_stitching_point.steer();
         const double init_a = trajectory_stitching_point.a();
@@ -184,6 +187,7 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
       const auto smoother_start_timestamp = std::chrono::system_clock::now();
       if (FLAGS_use_iterative_anchoring_smoother) {
         if (!GenerateDecoupledTraj(
+                            // 表示第1行0列
                 xWS_vec[i], last_time_u(1, 0), init_v, obstacles_vertices_vec,
                 &state_result_ds_vec[i], &control_result_ds_vec[i],
                 &time_result_ds_vec[i])) {
@@ -615,9 +619,11 @@ bool OpenSpaceTrajectoryOptimizer::GenerateDistanceApproachTraj(
 void OpenSpaceTrajectoryOptimizer::LoadHybridAstarResultInEigen(
     HybridAStartResult* result, Eigen::MatrixXd* xWS, Eigen::MatrixXd* uWS) {
   // load Warm Start result(horizon is timestep number minus one)
+  // horizon的数量是轨迹点的数量减一
   size_t horizon = result->x.size() - 1;
   xWS->resize(4, horizon + 1);
   uWS->resize(2, horizon);
+  // Eigen::Map的作用是将已有的数据变成Eigen类型，而不进行数据拷贝
   Eigen::VectorXd x = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
       result->x.data(), horizon + 1);
   Eigen::VectorXd y = Eigen::Map<Eigen::VectorXd, Eigen::Unaligned>(
