@@ -69,6 +69,7 @@ Status OpenSpaceRoiDecider::Process(Frame *frame) {
   vehicle_state_ = frame->vehicle_state();
   obstacles_by_frame_ = frame->GetObstacleList();
 
+  // array是定长数组，用它可能就是为了限制数量一定是4，表示库位的4个角点
   std::array<Vec2d, 4> spot_vertices;
   std::vector<Vec2d> dead_end_vertices;
   Path nearby_path;
@@ -91,6 +92,7 @@ Status OpenSpaceRoiDecider::Process(Frame *frame) {
       return Status(ErrorCode::PLANNING_ERROR, msg);
     }
 
+    // 获取到了4个角点的坐标
     if (!GetParkingSpot(frame, &spot_vertices, &nearby_path)) {
       const std::string msg = "Fail to get parking boundary from map";
       AERROR << msg;
@@ -293,6 +295,7 @@ void OpenSpaceRoiDecider::SetDeadEndOrigin(
     mutable_origin_point()->set_y(first_point.y());
 }
 
+// 将左上角点作为原点，这个原点有什么用？
 void OpenSpaceRoiDecider::SetOrigin(
     Frame *const frame, const std::array<common::math::Vec2d, 4> &vertices) {
   auto left_top = vertices[0];
@@ -349,6 +352,9 @@ void OpenSpaceRoiDecider::SetParkingSpotEndPose(
   const auto &origin_heading = frame->open_space_info().origin_heading();
 
   // End pose is set in normalized boundary
+  // 为什么要旋转和平移？归一化的边界？
+  // 可能是为了更好的设置终点位姿
+  // 以左上角点为原点，左上到右上角点的反向为x正向
   left_top -= origin_point;
   left_top.SelfRotate(-origin_heading);
   left_down -= origin_point;
@@ -359,6 +365,7 @@ void OpenSpaceRoiDecider::SetParkingSpotEndPose(
   right_down.SelfRotate(-origin_heading);
 
   // TODO(Jinyun): adjust end pose setting for more parking spot configurations
+  // 这不就一定会是90度吗？超过90是负的，小于90是正的
   double parking_spot_heading = (left_down - left_top).Angle();
   double end_x = (left_top.x() + right_top.x()) / 2.0;
   double end_y = 0.0;
@@ -368,6 +375,7 @@ void OpenSpaceRoiDecider::SetParkingSpotEndPose(
   const bool parking_inwards =
       config_.open_space_roi_decider_config().parking_inwards();
   const double top_to_down_distance = left_top.y() - left_down.y();
+  // 这个比较是什么含义？
   if (parking_spot_heading > common::math::kMathEpsilon) {
     if (parking_inwards) {
       end_y =
@@ -523,9 +531,11 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
     std::vector<double> *center_lane_s_right,
     std::vector<double> *left_lane_road_width,
     std::vector<double> *right_lane_road_width) {
+  // 中心点往后一段距离， 默认15m
   double start_s =
       center_line_s -
       config_.open_space_roi_decider_config().roi_longitudinal_range_start();
+  // 中心点往前一段距离， 默认15m
   double end_s =
       center_line_s +
       config_.open_space_roi_decider_config().roi_longitudinal_range_end();
@@ -542,6 +552,7 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
   while (check_point_s <= end_s) {
     hdmap::MapPathPoint check_point = nearby_path.GetSmoothPoint(check_point_s);
     double check_point_heading = check_point.heading();
+    // 默认是相差8度
     bool is_center_lane_heading_change =
         std::abs(common::math::NormalizeAngle(check_point_heading -
                                               last_check_point_heading)) >
@@ -556,6 +567,7 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
     bool is_anchor_point = check_point_s == start_s || check_point_s == end_s ||
                            is_center_lane_heading_change;
     // Add key points to the left-half boundary
+    // 这些key points有什么用？
     AddBoundaryKeyPoint(nearby_path, check_point_s, start_s, end_s,
                         is_anchor_point, true, center_lane_boundary_left,
                         left_lane_boundary, center_lane_s_left,
@@ -1162,6 +1174,7 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
 
   // TODO(jiaxuan): Write a half-boundary formation function and call it twice
   // to avoid duplicated manipulations on the left and right sides
+  // 区分左边车库还是右边车库
   if (average_l < 0) {
     // if average_l is lower than zero, the parking spot is on the right
     // lane boundary and assume that the lane half width is average_l
@@ -1641,6 +1654,7 @@ bool OpenSpaceRoiDecider::GetParkingSpot(Frame *const frame,
     return false;
   }
 
+  // 找到离停车位最近的那条lane  nearest_lane
   const auto &previous_open_space_info = ptr_last_frame->open_space_info();
   if (previous_open_space_info.target_parking_lane() != nullptr &&
       previous_open_space_info.target_parking_spot_id() ==
@@ -1711,6 +1725,14 @@ bool OpenSpaceRoiDecider::GetParkingSpot(Frame *const frame,
 
   // left or right of the parking lot is decided when viewing the parking spot
   // open upward
+
+  //    3 ———————————— 2
+  //     |           |
+  //     |           |
+  //     |           |
+  //    0 ———————————— 1
+
+  // 为什么垂直车位的角点要计算，而水平车位的角点直接从routing request中取？
   Vec2d left_top = target_parking_spot->polygon().points().at(3);
   Vec2d left_down = target_parking_spot->polygon().points().at(0);
   Vec2d right_down = target_parking_spot->polygon().points().at(1);
@@ -1732,6 +1754,7 @@ bool OpenSpaceRoiDecider::GetParkingSpot(Frame *const frame,
       config_.open_space_roi_decider_config().extend_right_x_buffer();
     double extend_left_x_buffer =
       config_.open_space_roi_decider_config().extend_left_x_buffer();
+    // x是全局坐标系吗？为什么可以直接加减？
     right_top.set_x(right_top.x() + extend_right_x_buffer);
     left_top.set_x(left_top.x() - extend_left_x_buffer);
     left_down.set_x(left_down.x() - extend_left_x_buffer);
@@ -1806,6 +1829,7 @@ bool OpenSpaceRoiDecider::GetPullOverSpot(
   return true;
 }
 
+// 这个overlap是什么？
 void OpenSpaceRoiDecider::SearchTargetParkingSpotOnPath(
     const hdmap::Path &nearby_path,
     ParkingSpaceInfoConstPtr *target_parking_spot) {
