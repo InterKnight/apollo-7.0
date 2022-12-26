@@ -51,6 +51,7 @@ OpenSpaceTrajectoryProvider::OpenSpaceTrajectoryProvider(
 }
 
 OpenSpaceTrajectoryProvider::~OpenSpaceTrajectoryProvider() {
+  // 这个flag默认是false
   if (FLAGS_enable_open_space_planner_thread) {
     Stop();
   }
@@ -117,19 +118,25 @@ Status OpenSpaceTrajectoryProvider::Process() {
         previous_frame->current_frame_planned_trajectory()
             .header()
             .timestamp_sec();
+    // 为什么和下面的cycle time不一样？
     const double planning_cycle_time = FLAGS_open_space_planning_period;
+    // 用上一帧的轨迹初始化了一个轨迹
     PublishableTrajectory last_frame_complete_trajectory(
         previous_planning_header, previous_planning);
     std::string replan_reason;
     const double start_timestamp = Clock::NowInSeconds();
+    // 重新生成的只有一个轨迹点的轨迹，或者是上一帧中生成的，在此刻车辆位置后面的轨迹点的集合
     stitching_trajectory = TrajectoryStitcher::ComputeStitchingTrajectory(
         vehicle_state, start_timestamp, planning_cycle_time,
         FLAGS_open_space_trajectory_stitching_preserved_length, false,
         &last_frame_complete_trajectory, &replan_reason);
   } else {
     ADEBUG << "Replan due to fallback stop";
+    // 为什么和上面的cycle time不一样？
     const double planning_cycle_time =
         1.0 / static_cast<double>(FLAGS_planning_loop_rate);
+    // 以车辆此时的状态生成一个trajectory point，这个vector中只有这一个点
+    // 只有一个点，后面是怎么再进行扩展的？
     stitching_trajectory = TrajectoryStitcher::ComputeReinitStitchingTrajectory(
         planning_cycle_time, vehicle_state);
     auto* open_space_status = injector_->planning_context()
@@ -223,7 +230,9 @@ Status OpenSpaceTrajectoryProvider::Process() {
     const auto& rotate_angle = open_space_info.origin_heading();
     const auto& translate_origin = open_space_info.origin_point();
     const auto& obstacles_edges_num = open_space_info.obstacles_edges_num();
+    // 这是什么？
     const auto& obstacles_A = open_space_info.obstacles_A();
+    // 这是什么？
     const auto& obstacles_b = open_space_info.obstacles_b();
     const auto& obstacles_vertices_vec =
         open_space_info.obstacles_vertices_vec();
@@ -349,6 +358,7 @@ bool OpenSpaceTrajectoryProvider::IsVehicleNearDestination(
   return false;
 }
 
+// fallback的标志位为true，且车辆处于静止状态
 bool OpenSpaceTrajectoryProvider::IsVehicleStopDueToFallBack(
     const bool is_on_fallback, const common::VehicleState& vehicle_state) {
   if (!is_on_fallback) {
@@ -364,6 +374,7 @@ bool OpenSpaceTrajectoryProvider::IsVehicleStopDueToFallBack(
   return false;
 }
 
+// 连发几个静止的点，但是加速度为什么不是0？
 void OpenSpaceTrajectoryProvider::GenerateStopTrajectory(
     DiscretizedTrajectory* const trajectory_data) {
   double relative_time = 0.0;
@@ -371,6 +382,7 @@ void OpenSpaceTrajectoryProvider::GenerateStopTrajectory(
   static constexpr int stop_trajectory_length = 10;
   static constexpr double relative_stop_time = 0.1;
   static constexpr double vEpsilon = 0.00001;
+  // 前进的时候给的是负的,倒车的时候给的是正的,相当于给了一个减速度
   double standstill_acceleration =
       frame_->vehicle_state().linear_velocity() >= -vEpsilon
           ? -FLAGS_open_space_standstill_acceleration

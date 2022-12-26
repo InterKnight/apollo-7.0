@@ -31,6 +31,7 @@ namespace planning {
 
 using apollo::common::TrajectoryPoint;
 
+// 这个类继承了vector，所以调用了父类的构造函数
 DiscretizedTrajectory::DiscretizedTrajectory(
     const std::vector<TrajectoryPoint>& trajectory_points)
     : std::vector<TrajectoryPoint>(trajectory_points) {

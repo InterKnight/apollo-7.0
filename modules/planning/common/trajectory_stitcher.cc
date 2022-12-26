@@ -55,6 +55,7 @@ TrajectoryPoint TrajectoryStitcher::ComputeTrajectoryPointFromVehicleState(
   return point;
 }
 
+// 用车辆当前位置生成一个轨迹点，这个列表中只有这一个轨迹点
 std::vector<TrajectoryPoint>
 TrajectoryStitcher::ComputeReinitStitchingTrajectory(
     const double planning_cycle_time, const VehicleState& vehicle_state) {
@@ -116,6 +117,7 @@ void TrajectoryStitcher::TransformLastPublishedTrajectory(
    (or) 2. we don't have the trajectory from last planning cycle
    (or) 3. the position deviation from actual and target is too high
 */
+// 轨迹缝合，利用上一帧的轨迹，减少计算量
 std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
     const VehicleState& vehicle_state, const double current_timestamp,
     const double planning_cycle_time, const size_t preserved_points_num,
@@ -145,12 +147,15 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
     return ComputeReinitStitchingTrajectory(planning_cycle_time, vehicle_state);
   }
 
+  // 和上一帧的相对时间
   const double veh_rel_time =
       current_timestamp - prev_trajectory->header_time();
 
+  // 在上一帧的轨迹中，找到现在这个时刻的轨迹点的index
   size_t time_matched_index =
       prev_trajectory->QueryLowerBoundPoint(veh_rel_time);
 
+  // 找出的这个index太小
   if (time_matched_index == 0 &&
       veh_rel_time < prev_trajectory->StartPoint().relative_time()) {
     AWARN << "current time smaller than the previous trajectory's first time";
@@ -159,6 +164,7 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
         "time.";
     return ComputeReinitStitchingTrajectory(planning_cycle_time, vehicle_state);
   }
+  // 找出的这个index太大
   if (time_matched_index + 1 >= prev_trajectory_size) {
     AWARN << "current time beyond the previous trajectory's last time";
     *replan_reason =
@@ -166,6 +172,7 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
     return ComputeReinitStitchingTrajectory(planning_cycle_time, vehicle_state);
   }
 
+  // 在上一帧的轨迹中，找到现在这个时刻的轨迹点
   auto time_matched_point = prev_trajectory->TrajectoryPointAt(
       static_cast<uint32_t>(time_matched_index));
 
@@ -174,14 +181,17 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
     return ComputeReinitStitchingTrajectory(planning_cycle_time, vehicle_state);
   }
 
+  // 在上一帧的轨迹中，找到现在这个位置的轨迹点的index
   size_t position_matched_index = prev_trajectory->QueryNearestPointWithBuffer(
       {vehicle_state.x(), vehicle_state.y()}, 1.0e-6);
 
+  // 计算坐标点投影，车辆实际位置的s和l
   auto frenet_sd = ComputePositionProjection(
       vehicle_state.x(), vehicle_state.y(),
       prev_trajectory->TrajectoryPointAt(
           static_cast<uint32_t>(position_matched_index)));
 
+  // 为什么要关闭这个选项，难道不会出现距离差距太大吗？
   if (replan_by_offset) {
     auto lon_diff = time_matched_point.path_point().s() - frenet_sd.first;
     auto lat_diff = frenet_sd.second;
@@ -217,6 +227,7 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
 
   double forward_rel_time = veh_rel_time + planning_cycle_time;
 
+  // 下一时刻的index
   size_t forward_time_index =
       prev_trajectory->QueryLowerBoundPoint(forward_rel_time);
 
@@ -225,12 +236,14 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
 
   auto matched_index = std::min(time_matched_index, position_matched_index);
 
+  // 目前生成的轨迹都是主车身后的轨迹
   std::vector<TrajectoryPoint> stitching_trajectory(
       prev_trajectory->begin() +
           std::max(0, static_cast<int>(matched_index - preserved_points_num)),
       prev_trajectory->begin() + forward_time_index + 1);
   ADEBUG << "stitching_trajectory size: " << stitching_trajectory.size();
 
+  // 现在车辆所在位置的s，应该为0
   const double zero_s = stitching_trajectory.back().path_point().s();
   for (auto& tp : stitching_trajectory) {
     if (!tp.has_path_point()) {
