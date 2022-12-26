@@ -82,6 +82,7 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
   stitching_trajectory_ = stitching_trajectory;
 
   // Init trajectory point is the stitching point from last trajectory
+  // 取最后一个点，应该就是车辆此时所在的点
   const common::TrajectoryPoint trajectory_stitching_point =
       stitching_trajectory.back();
 
@@ -102,6 +103,7 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
   // now)
   HybridAStartResult result;
 
+  // 调用混合A*
   if (warm_start_->Plan(init_x, init_y, init_phi, end_pose[0], end_pose[1],
                         end_pose[2], XYbounds, obstacles_vertices_vec,
                         &result)) {
@@ -128,6 +130,7 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
     if (!warm_start_->TrajectoryPartition(result, &partition_trajectories)) {
       return Status(ErrorCode::PLANNING_ERROR, "Hybrid Astar partition failed");
     }
+    // 表示一共分了几段
     size_t size = partition_trajectories.size();
     std::vector<Eigen::MatrixXd> xWS_vec;
     std::vector<Eigen::MatrixXd> uWS_vec;
