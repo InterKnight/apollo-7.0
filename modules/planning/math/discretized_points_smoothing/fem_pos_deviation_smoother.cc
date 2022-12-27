@@ -38,6 +38,7 @@ bool FemPosDeviationSmoother::Solve(
     const std::vector<std::pair<double, double>>& raw_point2d,
     const std::vector<double>& bounds, std::vector<double>* opt_x,
     std::vector<double>* opt_y) {
+      // 默认是false
   if (config_.apply_curvature_constraint()) {
     if (config_.use_sqp()) {
       return SqpWithOsqp(raw_point2d, bounds, opt_x, opt_y);

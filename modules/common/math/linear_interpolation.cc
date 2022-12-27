@@ -55,6 +55,7 @@ SLPoint InterpolateUsingLinearApproximation(const SLPoint &p0,
   return p;
 }
 
+// 利用线性估计进行差值，已知s，求x，y
 PathPoint InterpolateUsingLinearApproximation(const PathPoint &p0,
                                               const PathPoint &p1,
                                               const double s) {

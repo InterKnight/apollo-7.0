@@ -48,6 +48,7 @@ IterativeAnchoringSmoother::IterativeAnchoringSmoother(
       common::VehicleConfigHelper::Instance()->GetConfig().vehicle_param();
   ego_length_ = vehicle_param.length();
   ego_width_ = vehicle_param.width();
+  // 几何中心到后轴中心的距离
   center_shift_distance_ =
       ego_length_ / 2.0 - vehicle_param.back_edge_to_center();
   planner_open_space_config_ = planner_open_space_config;
@@ -65,6 +66,7 @@ bool IterativeAnchoringSmoother::Smooth(
   const auto start_timestamp = std::chrono::system_clock::now();
 
   // Set gear of the trajectory
+  // 根据heading的方向判断前进还是后退
   gear_ = CheckGear(xWS);
 
   // Set obstacle in form of linesegments
@@ -82,6 +84,7 @@ bool IterativeAnchoringSmoother::Smooth(
   obstacles_linesegments_vec_ = std::move(obstacles_linesegments_vec);
 
   // Interpolate the traj
+  // 感觉就是把xWS中的轨迹点放入了warm_start_path
   DiscretizedPath warm_start_path;
   size_t xWS_size = xWS.cols();
   double accumulated_s = 0.0;
@@ -101,8 +104,10 @@ bool IterativeAnchoringSmoother::Smooth(
   const double interpolated_delta_s =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .interpolated_delta_s();
+  // 将warm_start_path根据指定的间隔重新差值取点
   std::vector<std::pair<double, double>> interpolated_warm_start_point2ds;
   double path_length = warm_start_path.Length();
+  // 保证所有点都等分，不会最后一个点的delta_s比较小
   double delta_s = path_length / std::ceil(path_length / interpolated_delta_s);
   path_length += delta_s * 1.0e-6;
   for (double s = 0; s < path_length; s += delta_s) {
@@ -128,6 +133,7 @@ bool IterativeAnchoringSmoother::Smooth(
 
   // Reset path profile by discrete point heading and curvature estimation
   DiscretizedPath interpolated_warm_start_path;
+  // 根据x，y计算heading，s，kappa, dkappa, 完善path信息
   if (!SetPathProfile(interpolated_warm_start_point2ds,
                       &interpolated_warm_start_path)) {
     AERROR << "Set path profile fails";
@@ -135,6 +141,7 @@ bool IterativeAnchoringSmoother::Smooth(
   }
 
   // Generate feasible bounds for each path point
+  // vector的size和interpolated_warm_start_path的size一样，每一个值都是2
   std::vector<double> bounds;
   if (!GenerateInitialBounds(interpolated_warm_start_path, &bounds)) {
     AERROR << "Generate initial bounds failed, path point to close to obstacle";
@@ -144,6 +151,7 @@ bool IterativeAnchoringSmoother::Smooth(
   // Check initial path collision avoidance, if it fails, smoother assumption
   // fails. Try reanchoring
   input_colliding_point_index_.clear();
+  // 判断生成的轨迹是否碰撞
   if (!CheckCollisionAvoidance(interpolated_warm_start_path,
                                &input_colliding_point_index_)) {
     AERROR << "Interpolated input path points colliding with obstacle";
@@ -207,6 +215,7 @@ bool IterativeAnchoringSmoother::Smooth(
   return true;
 }
 
+// 调整第二个点和倒数第二个点的heading
 void IterativeAnchoringSmoother::AdjustStartEndHeading(
     const Eigen::MatrixXd& xWS,
     std::vector<std::pair<double, double>>* const point2d) {
@@ -230,9 +239,12 @@ void IterativeAnchoringSmoother::AdjustStartEndHeading(
                 first_to_second_dy * first_to_second_dy);
   Vec2d first_point(point2d->at(0).first, point2d->at(0).second);
   Vec2d initial_vec(first_to_second_s, 0);
+  // 旋转
   initial_vec.SelfRotate(gear_ ? initial_heading
                                : NormalizeAngle(initial_heading + M_PI));
+  // 平移
   initial_vec += first_point;
+  // 为什么我感觉point2d->at(1)本来就等于经过一系列变换来的initial_vec？
   point2d->at(1) = std::make_pair(initial_vec.x(), initial_vec.y());
 
   const size_t path_size = point2d->size();
@@ -385,17 +397,21 @@ bool IterativeAnchoringSmoother::GenerateInitialBounds(
   CHECK_NOTNULL(initial_bounds);
   initial_bounds->clear();
 
+  // 默认false
   const bool estimate_bound =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .estimate_bound();
+  // 默认是2
   const double default_bound =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .default_bound();
+  //  默认1.04
   const double vehicle_shortest_dimension =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .vehicle_shortest_dimension();
   const double kEpislon = 1e-8;
 
+  // 默认是false
   if (!estimate_bound) {
     std::vector<double> default_bounds(path_points.size(), default_bound);
     *initial_bounds = std::move(default_bounds);
@@ -447,6 +463,7 @@ bool IterativeAnchoringSmoother::SmoothPath(
       return true;
     }
 
+    // 调整path的bound，但是不知道理由是什么？
     AdjustPathBounds(colliding_point_index, &flexible_bounds);
 
     std::vector<double> opt_x;
@@ -474,6 +491,7 @@ bool IterativeAnchoringSmoother::SmoothPath(
       return false;
     }
 
+    // 没有碰撞是true
     is_collision_free =
         CheckCollisionAvoidance(*smoothed_path_points, &colliding_point_index);
 
@@ -493,6 +511,7 @@ bool IterativeAnchoringSmoother::CheckCollisionAvoidance(
   for (size_t i = 0; i < path_points_size; ++i) {
     // Skip checking collision for thoese points colliding originally
     bool skip_checking = false;
+    // 这感觉是一个bug，input_colliding_point_index_永远是空的？
     for (const auto index : input_colliding_point_index_) {
       if (i == index) {
         skip_checking = true;
@@ -539,20 +558,24 @@ void IterativeAnchoringSmoother::AdjustPathBounds(
     std::vector<double>* bounds) {
   CHECK_NOTNULL(bounds);
 
+  // 默认是0.9, 难道是为了防止碰撞给的系数？
   const double collision_decrease_ratio =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .collision_decrease_ratio();
 
+  // 感觉这是个bug，colliding_point_index应该为空才对？
   for (const auto index : colliding_point_index) {
     bounds->at(index) *= collision_decrease_ratio;
   }
 
   // Anchor the end points to enforce the initial end end heading continuity and
   // zero kappa
+  // 将第1,2和最后1,2个点的bound设置为0
   bounds->at(0) = 0.0;
   bounds->at(1) = 0.0;
   bounds->at(bounds->size() - 1) = 0.0;
   bounds->at(bounds->size() - 2) = 0.0;
+  // 正常应该是true
   if (enforce_initial_kappa_) {
     bounds->at(2) = 0.0;
   }
@@ -568,6 +591,7 @@ bool IterativeAnchoringSmoother::SetPathProfile(
   std::vector<double> kappas;
   std::vector<double> dkappas;
   std::vector<double> accumulated_s;
+  // 根据x，y计算heading，s，斜率
   if (!DiscretePointsMath::ComputePathProfile(
           point2d, &headings, &accumulated_s, &kappas, &dkappas)) {
     return false;
