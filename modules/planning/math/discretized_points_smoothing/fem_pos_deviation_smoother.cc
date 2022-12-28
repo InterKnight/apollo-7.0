@@ -62,6 +62,7 @@ bool FemPosDeviationSmoother::QpWithOsqp(
 
   FemPosDeviationOsqpInterface solver;
 
+  // 分别代表了平滑性、曲线总长度和参考点距离。大部分场景都是只考虑平滑性（平滑性权重默认设置为1e10，其他的权重设置为1）
   solver.set_weight_fem_pos_deviation(config_.weight_fem_pos_deviation());
   solver.set_weight_path_length(config_.weight_path_length());
   solver.set_weight_ref_deviation(config_.weight_ref_deviation());

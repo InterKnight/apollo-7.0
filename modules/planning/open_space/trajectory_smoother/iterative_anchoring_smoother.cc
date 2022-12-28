@@ -104,7 +104,7 @@ bool IterativeAnchoringSmoother::Smooth(
   const double interpolated_delta_s =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .interpolated_delta_s();
-  // 将warm_start_path根据指定的间隔重新差值取点
+  // 将warm_start_path根据指定的间隔重新差值取点,然后放入interpolated_warm_start_point2ds
   std::vector<std::pair<double, double>> interpolated_warm_start_point2ds;
   double path_length = warm_start_path.Length();
   // 保证所有点都等分，不会最后一个点的delta_s比较小
@@ -129,6 +129,7 @@ bool IterativeAnchoringSmoother::Smooth(
   }
 
   // Adjust heading to ensure heading continuity
+  // 使得从第一个点到第二个点的heading与给定的起始点heading相等，倒数第二个点的heading与给定的终止点heading相等
   AdjustStartEndHeading(xWS, &interpolated_warm_start_point2ds);
 
   // Reset path profile by discrete point heading and curvature estimation
@@ -141,7 +142,7 @@ bool IterativeAnchoringSmoother::Smooth(
   }
 
   // Generate feasible bounds for each path point
-  // vector的size和interpolated_warm_start_path的size一样，每一个值都是2
+  // bounds这个vector的size和interpolated_warm_start_path的size一样，每一个值都是2
   std::vector<double> bounds;
   if (!GenerateInitialBounds(interpolated_warm_start_path, &bounds)) {
     AERROR << "Generate initial bounds failed, path point to close to obstacle";
@@ -216,6 +217,7 @@ bool IterativeAnchoringSmoother::Smooth(
 }
 
 // 调整第二个点和倒数第二个点的heading
+// 使得从第一个点到第二个点的heading与给定的起始点heading相等，倒数第二个点的heading与给定的终止点heading相等
 void IterativeAnchoringSmoother::AdjustStartEndHeading(
     const Eigen::MatrixXd& xWS,
     std::vector<std::pair<double, double>>* const point2d) {
@@ -245,6 +247,9 @@ void IterativeAnchoringSmoother::AdjustStartEndHeading(
   // 平移
   initial_vec += first_point;
   // 为什么我感觉point2d->at(1)本来就等于经过一系列变换来的initial_vec？
+  // 并不是，xWS是原始的轨迹点，而point2d是后面重采样后的
+  // 所有重采样后的点可能heading和原来点的heading不一样
+  // 这里就是为了让他们一样
   point2d->at(1) = std::make_pair(initial_vec.x(), initial_vec.y());
 
   const size_t path_size = point2d->size();
@@ -438,6 +443,7 @@ bool IterativeAnchoringSmoother::GenerateInitialBounds(
 bool IterativeAnchoringSmoother::SmoothPath(
     const DiscretizedPath& raw_path_points, const std::vector<double>& bounds,
     DiscretizedPath* smoothed_path_points) {
+  // 将原始的轨迹点提取成另一种格式
   std::vector<std::pair<double, double>> raw_point2d;
   std::vector<double> flexible_bounds;
   for (const auto& path_point : raw_path_points) {
@@ -457,6 +463,7 @@ bool IterativeAnchoringSmoother::SmoothPath(
   std::vector<std::pair<double, double>> smoothed_point2d;
   size_t counter = 0;
 
+  // 当不碰撞的时候推出循环
   while (!is_collision_free) {
     if (counter > max_iteration_num) {
       AERROR << "Maximum iteration reached, path smoother early stops";
@@ -575,7 +582,7 @@ void IterativeAnchoringSmoother::AdjustPathBounds(
   bounds->at(1) = 0.0;
   bounds->at(bounds->size() - 1) = 0.0;
   bounds->at(bounds->size() - 2) = 0.0;
-  // 正常应该是true
+  // 正常应该是true,将第3个点的bound设置为0
   if (enforce_initial_kappa_) {
     bounds->at(2) = 0.0;
   }
