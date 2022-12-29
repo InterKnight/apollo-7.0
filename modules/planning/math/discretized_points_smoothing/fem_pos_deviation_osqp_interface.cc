@@ -27,6 +27,9 @@
 namespace apollo {
 namespace planning {
 
+// 这里用的符号和有些资料中用的符号不一样，比如这里用P来表示二次型矩阵H
+// 找到一个符合这里符号定义的文章：https://zhuanlan.zhihu.com/p/444096265
+// https://cloud.tencent.com/developer/article/2190924
 bool FemPosDeviationOsqpInterface::Solve() {
   // Sanity Check
   if (ref_points_.empty()) {
@@ -55,12 +58,14 @@ bool FemPosDeviationOsqpInterface::Solve() {
   num_of_constraints_ = num_of_variables_;
 
   // Calculate kernel
+  // 计算二次型矩阵P
   std::vector<c_float> P_data;
   std::vector<c_int> P_indices;
   std::vector<c_int> P_indptr;
   CalculateKernel(&P_data, &P_indices, &P_indptr);
 
   // Calculate affine constraints
+  // 计算约束矩阵A
   std::vector<c_float> A_data;
   std::vector<c_int> A_indices;
   std::vector<c_int> A_indptr;
@@ -70,10 +75,12 @@ bool FemPosDeviationOsqpInterface::Solve() {
                             &upper_bounds);
 
   // Calculate offset
+  // 计算一次矩阵q
   std::vector<c_float> q;
   CalculateOffset(&q);
 
   // Set primal warm start
+  // OSQP还需要设定迭代初值，设定迭代初值为原始参考点坐标
   std::vector<c_float> primal_warm_start;
   SetPrimalWarmStart(&primal_warm_start);
 
@@ -148,10 +155,12 @@ void FemPosDeviationOsqpInterface::CalculateKernel(
   // |0,     0,       0,       0,       0,       X+Y+Z|
 
   // Only upper triangle needs to be filled
+  // 只考虑上三角是因为上下是对称的,只上三角结果是相同的
   std::vector<std::vector<std::pair<c_int, c_float>>> columns;
   columns.resize(num_of_variables_);
   int col_num = 0;
 
+  // 第1、2列：X + Y + Z；之所以有两列，是因为坐标有x和y两个变量
   for (int col = 0; col < 2; ++col) {
     columns[col].emplace_back(col, weight_fem_pos_deviation_ +
                                        weight_path_length_ +
@@ -159,6 +168,7 @@ void FemPosDeviationOsqpInterface::CalculateKernel(
     ++col_num;
   }
 
+  // 第3、4列：-2X-Y & 5X + 2Y + Z
   for (int col = 2; col < 4; ++col) {
     columns[col].emplace_back(
         col - 2, -2.0 * weight_fem_pos_deviation_ - weight_path_length_);
@@ -168,6 +178,7 @@ void FemPosDeviationOsqpInterface::CalculateKernel(
     ++col_num;
   }
 
+  // 第5列~第num_of_points_-2列: X & -4X -Y & 6X + 2Y + Z
   int second_point_from_last_index = num_of_points_ - 2;
   for (int point_index = 2; point_index < second_point_from_last_index;
        ++point_index) {
@@ -185,6 +196,7 @@ void FemPosDeviationOsqpInterface::CalculateKernel(
     }
   }
 
+  // 倒数第3、4列：-2X-Y & 5X + 2Y + Z
   int second_point_col_from_last_col = num_of_variables_ - 4;
   int last_point_col_from_last_col = num_of_variables_ - 2;
   for (int col = second_point_col_from_last_col;
@@ -198,6 +210,7 @@ void FemPosDeviationOsqpInterface::CalculateKernel(
     ++col_num;
   }
 
+  // 倒数第1、2列：X + Y + Z
   for (int col = last_point_col_from_last_col; col < num_of_variables_; ++col) {
     columns[col].emplace_back(col - 4, weight_fem_pos_deviation_);
     columns[col].emplace_back(

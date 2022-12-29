@@ -464,13 +464,19 @@ bool IterativeAnchoringSmoother::SmoothPath(
   size_t counter = 0;
 
   // 当不碰撞的时候推出循环
+  // 在每个迭代平滑完成后的结果会和所有障碍物进行碰撞检查。
+  // 如果发生碰撞，将发生碰撞的点通过调小矩形框重新进行下一次平滑，直到满足碰撞约束为止。
   while (!is_collision_free) {
     if (counter > max_iteration_num) {
       AERROR << "Maximum iteration reached, path smoother early stops";
       return true;
     }
 
-    // 调整path的bound，但是不知道理由是什么？
+    // 调整path的bound，如果发生碰撞，将发生碰撞的点的bound调小
+    // 这里因为形参和实参同名，所以会有些变扭
+    // 第一次进入这个函数的时候，因为colliding_point_index为空，所以不会缩放bound
+    // 但是后面的CheckCollisionAvoidance函数会往colliding_point_index中添加元素
+    // 所以如果发生碰撞，那就会在碰撞点进行缩放
     AdjustPathBounds(colliding_point_index, &flexible_bounds);
 
     std::vector<double> opt_x;
@@ -570,13 +576,14 @@ void IterativeAnchoringSmoother::AdjustPathBounds(
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .collision_decrease_ratio();
 
-  // 感觉这是个bug，colliding_point_index应该为空才对？
   for (const auto index : colliding_point_index) {
     bounds->at(index) *= collision_decrease_ratio;
   }
 
   // Anchor the end points to enforce the initial end end heading continuity and
   // zero kappa
+  // 将开始和结束的几个点的bound设为0，也就是这几个点固定了，anchor的由来
+  // 这是为了保证heading的连续性，以及曲率为0
   // 将第1,2和最后1,2个点的bound设置为0
   bounds->at(0) = 0.0;
   bounds->at(1) = 0.0;
