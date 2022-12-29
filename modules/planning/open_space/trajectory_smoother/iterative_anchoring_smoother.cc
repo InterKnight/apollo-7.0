@@ -524,7 +524,7 @@ bool IterativeAnchoringSmoother::CheckCollisionAvoidance(
   for (size_t i = 0; i < path_points_size; ++i) {
     // Skip checking collision for thoese points colliding originally
     bool skip_checking = false;
-    // 这感觉是一个bug，input_colliding_point_index_永远是空的？
+    // 第一次进来 input_colliding_point_index_是空的，后面被填充push_back
     for (const auto index : input_colliding_point_index_) {
       if (i == index) {
         skip_checking = true;
@@ -571,7 +571,11 @@ void IterativeAnchoringSmoother::AdjustPathBounds(
     std::vector<double>* bounds) {
   CHECK_NOTNULL(bounds);
 
-  // 默认是0.9, 难道是为了防止碰撞给的系数？
+  // 默认是0.9, 因为发生碰撞，所以每次缩小范围
+  // 因为初始点是做过碰撞检测的，是肯定不碰撞的
+  // 在优化过程中，也就是在平滑过程中
+  // 平滑后的点会偏离原始点，就可能碰撞
+  // 如果碰撞，就把平滑的点往原始点靠一靠
   const double collision_decrease_ratio =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .collision_decrease_ratio();
