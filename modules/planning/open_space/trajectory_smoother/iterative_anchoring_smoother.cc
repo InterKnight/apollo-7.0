@@ -85,6 +85,7 @@ bool IterativeAnchoringSmoother::Smooth(
 
   // Interpolate the traj
   // 感觉就是把xWS中的轨迹点放入了warm_start_path
+  // 增加了一个累积s的维度的
   DiscretizedPath warm_start_path;
   size_t xWS_size = xWS.cols();
   double accumulated_s = 0.0;
