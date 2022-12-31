@@ -1955,6 +1955,7 @@ bool OpenSpaceRoiDecider::LoadObstacleInVertices(
         static_cast<int>(roi_parking_boundary[i].size()) - 1;
   }
 
+  // 默认是true
   if (config_.open_space_roi_decider_config().enable_perception_obstacles()) {
     if (perception_obstacles_num == 0) {
       ADEBUG << "no obstacle given by perception";

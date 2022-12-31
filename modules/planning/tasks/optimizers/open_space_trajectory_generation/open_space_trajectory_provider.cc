@@ -100,6 +100,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
     return Status::OK();
   }
   // Start thread when getting in Process() for the first time
+  // 默认是false，不单独开线程
   if (FLAGS_enable_open_space_planner_thread && !thread_init_flag_) {
     task_future_ = cyber::Async(
         &OpenSpaceTrajectoryProvider::GenerateTrajectoryThread, this);
@@ -136,7 +137,6 @@ Status OpenSpaceTrajectoryProvider::Process() {
     const double planning_cycle_time =
         1.0 / static_cast<double>(FLAGS_planning_loop_rate);
     // 以车辆此时的状态生成一个trajectory point，这个vector中只有这一个点
-    // 只有一个点，后面是怎么再进行扩展的？
     stitching_trajectory = TrajectoryStitcher::ComputeReinitStitchingTrajectory(
         planning_cycle_time, vehicle_state);
     auto* open_space_status = injector_->planning_context()
@@ -374,7 +374,7 @@ bool OpenSpaceTrajectoryProvider::IsVehicleStopDueToFallBack(
   return false;
 }
 
-// 连发几个静止的点，但是加速度为什么不是0？
+// 连发几个静止的点
 void OpenSpaceTrajectoryProvider::GenerateStopTrajectory(
     DiscretizedTrajectory* const trajectory_data) {
   double relative_time = 0.0;

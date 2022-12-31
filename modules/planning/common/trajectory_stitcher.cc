@@ -118,7 +118,7 @@ void TrajectoryStitcher::TransformLastPublishedTrajectory(
    (or) 3. the position deviation from actual and target is too high
 */
 // 轨迹缝合，利用上一帧的轨迹，减少计算量
-std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
+std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchi1ngTrajectory(
     const VehicleState& vehicle_state, const double current_timestamp,
     const double planning_cycle_time, const size_t preserved_points_num,
     const bool replan_by_offset, const PublishableTrajectory* prev_trajectory,
@@ -182,10 +182,14 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
   }
 
   // 在上一帧的轨迹中，找到现在这个位置的轨迹点的index
+  // 从头遍历上一个轨迹中每一个点，能否进行优化？
+  // 从第一个轨迹点开始，车辆到轨迹点的距离应该是先减小再增大的
+  // 能不能判断只要开始增大了，就表示找到了匹配点，后面的点就不用计算了
+  // 这样的风险就是，在一个曲率比较大的路段，可能会匹配错
   size_t position_matched_index = prev_trajectory->QueryNearestPointWithBuffer(
       {vehicle_state.x(), vehicle_state.y()}, 1.0e-6);
 
-  // 计算坐标点投影，车辆实际位置的s和l
+  // 计算坐标点投影，用position_matched_point（有s和l）计算车辆实际位置的s和l
   auto frenet_sd = ComputePositionProjection(
       vehicle_state.x(), vehicle_state.y(),
       prev_trajectory->TrajectoryPointAt(
@@ -227,16 +231,18 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
 
   double forward_rel_time = veh_rel_time + planning_cycle_time;
 
-  // 下一时刻的index
+  // prev_trajectory在当前下一时刻对应的index
   size_t forward_time_index =
       prev_trajectory->QueryLowerBoundPoint(forward_rel_time);
 
   ADEBUG << "Position matched index:\t" << position_matched_index;
   ADEBUG << "Time matched index:\t" << time_matched_index;
 
+  // 将时间匹配点和位置匹配点中，更加靠近前面的点作为匹配点
   auto matched_index = std::min(time_matched_index, position_matched_index);
 
-  // 目前生成的轨迹都是主车身后的轨迹
+  // 在泊车场景中，preserved_points_num为无穷大，所以生成的轨迹是
+  // 从上个轨迹的起始点到下一时刻点的轨迹
   std::vector<TrajectoryPoint> stitching_trajectory(
       prev_trajectory->begin() +
           std::max(0, static_cast<int>(matched_index - preserved_points_num)),
