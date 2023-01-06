@@ -664,10 +664,12 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   const double max_acc_jerk =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_acc_jerk();
+  // 默认0.2
   const double delta_t =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .delta_t();
 
+  // 这是怎么来的
   const double total_t = 2 * path_length / max_reverse_acc * 10;
   ADEBUG << "total_t is : " << total_t;
   const size_t num_of_knots = static_cast<size_t>(total_t / delta_t) + 1;
