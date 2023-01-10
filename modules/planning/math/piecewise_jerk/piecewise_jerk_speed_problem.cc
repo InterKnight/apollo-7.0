@@ -45,6 +45,7 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
                                                 std::vector<c_int>* P_indices,
                                                 std::vector<c_int>* P_indptr) {
   const int n = static_cast<int>(num_of_knots_);
+  // 自变量的个数是节点数的3倍
   const int kNumParam = 3 * n;
   const int kNumValue = 4 * n - 1;
   std::vector<std::vector<std::pair<c_int, c_float>>> columns;
