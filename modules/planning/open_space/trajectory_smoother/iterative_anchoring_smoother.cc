@@ -649,18 +649,23 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
                                              const double init_v,
                                              const double path_length,
                                              SpeedData* smoothed_speeds) {
+  // 默认2
   const double max_forward_v =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_forward_v();
+  // 默认2
   const double max_reverse_v =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_reverse_v();
+  // 默认3
   const double max_forward_acc =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_forward_acc();
+  // 默认2
   const double max_reverse_acc =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_reverse_acc();
+  // 默认4
   const double max_acc_jerk =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_acc_jerk();
@@ -669,11 +674,13 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .delta_t();
 
-  // 这是怎么来的
+  // 这是怎么来的？
   const double total_t = 2 * path_length / max_reverse_acc * 10;
   ADEBUG << "total_t is : " << total_t;
+  // 加1不能省
   const size_t num_of_knots = static_cast<size_t>(total_t / delta_t) + 1;
 
+  // 这里把速度和加速度都取了绝对值，这是为什么？
   PiecewiseJerkSpeedProblem piecewise_jerk_problem(
       num_of_knots, delta_t, {0.0, std::abs(init_v), std::abs(init_a)});
 
@@ -688,16 +695,19 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   const double max_v = gear_ ? max_forward_v : max_reverse_v;
   const double max_acc = gear_ ? max_forward_acc : max_reverse_acc;
 
+  // fmax只能对比float或double，max可以对比很多不同类型
   const auto upper_dx = std::fmax(max_v, std::abs(init_v));
   std::vector<std::pair<double, double>> dx_bounds(num_of_knots,
                                                    {0.0, upper_dx});
   std::vector<std::pair<double, double>> ddx_bounds(num_of_knots,
                                                     {-max_acc, max_acc});
 
+  // 终点一定是那个点，且速度和加速度一定是0
   x_bounds[num_of_knots - 1] = std::make_pair(path_length, path_length);
   dx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
   ddx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
 
+  // 为什么所有点的ref都一样，都为总长度？
   std::vector<double> x_ref(num_of_knots, path_length);
   piecewise_jerk_problem.set_x_ref(s_curve_config.ref_s_weight(),
                                    std::move(x_ref));
@@ -720,9 +730,11 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   const std::vector<double>& dds = piecewise_jerk_problem.opt_ddx();
 
   // Assign speed point by gear
+  // 0时刻的点，要和给定的点一摸一样
   smoothed_speeds->AppendSpeedPoint(s[0], 0.0, ds[0], dds[0], 0.0);
   const double kEpislon = 1.0e-4;
   const double sEpislon = 1.0e-1;
+  // 这里从第二个点开始，因为前面已经添加了第一个点
   for (size_t i = 1; i < num_of_knots; ++i) {
     if (s[i - 1] - s[i] > kEpislon) {
       AERROR << "unexpected decreasing s in speed smoothing at time "
