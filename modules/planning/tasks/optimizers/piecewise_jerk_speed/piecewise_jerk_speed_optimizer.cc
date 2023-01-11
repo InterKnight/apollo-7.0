@@ -145,6 +145,7 @@ Status PiecewiseJerkSpeedOptimizer::Process(const PathData& path_data,
     x_ref.emplace_back(path_s);
     // get curvature
     PathPoint path_point = path_data.GetPathPointWithPathS(path_s);
+    // kappa_penalty_weight is 100 default
     penalty_dx.push_back(std::fabs(path_point.kappa()) *
                          config.kappa_penalty_weight());
     // get v_upper_bound
