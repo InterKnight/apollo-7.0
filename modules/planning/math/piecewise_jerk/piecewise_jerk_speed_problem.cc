@@ -49,6 +49,7 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
   const int kNumParam = 3 * n;
   // 这个是P矩阵中一共有多少元素，可由公式推出，这里做一个校验
   const int kNumValue = 4 * n - 1;
+  // pair中的第一个元素表示多少行，columns的下标表示多少列
   std::vector<std::vector<std::pair<c_int, c_float>>> columns;
   columns.resize(kNumParam);
   int value_index = 0;
@@ -73,6 +74,8 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
                                          (scale_factor_[0] * scale_factor_[0]));
   ++value_index;
 
+  // penalty_dx_ 在泊车场景中疑似是0，待验证
+
   // ----------------------------------------------------------------------------
   // x(i)'^2 * (w_dx_ref + penalty_dx)
   for (int i = 0; i < n - 1; ++i) {
@@ -88,6 +91,7 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
   ++value_index;
 
   // ----------------------------------------------------------------------------
+  // 在速度规划中，这里的delta_s_实际上是指delta_t，这里默认0.2
   auto delta_s_square = delta_s_ * delta_s_;
   // x(i)''^2 * (w_ddx + w_dddx / delta_s^2)
   columns[2 * n].emplace_back(2 * n,
