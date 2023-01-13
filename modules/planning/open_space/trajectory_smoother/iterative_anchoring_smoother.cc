@@ -689,6 +689,7 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
           .s_curve_config();
 
   // set end constraints
+  // 下限都是0,上限是总长度
   std::vector<std::pair<double, double>> x_bounds(num_of_knots,
                                                   {0.0, path_length});
 
@@ -697,8 +698,10 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
 
   // fmax只能对比float或double，max可以对比很多不同类型
   const auto upper_dx = std::fmax(max_v, std::abs(init_v));
+  // 速度的下限是0,上线是设定的最大速度与初始速度之间的较大值
   std::vector<std::pair<double, double>> dx_bounds(num_of_knots,
                                                    {0.0, upper_dx});
+  // 加速度的上下限都是从配置文件中读取的,分前进和倒车两种情况
   std::vector<std::pair<double, double>> ddx_bounds(num_of_knots,
                                                     {-max_acc, max_acc});
 
@@ -708,6 +711,8 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   ddx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
 
   // 为什么所有点的ref都一样，都为总长度？
+  // 理论上应该是每个点实际的s
+  // 推测可能是因为这个影响不大？
   std::vector<double> x_ref(num_of_knots, path_length);
   piecewise_jerk_problem.set_x_ref(s_curve_config.ref_s_weight(),
                                    std::move(x_ref));

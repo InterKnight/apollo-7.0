@@ -47,10 +47,20 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
   const int n = static_cast<int>(num_of_knots_);
   // 自变量的个数是节点数的3倍
   const int kNumParam = 3 * n;
+  // 这个是P矩阵中一共有多少元素，可由公式推出，这里做一个校验
   const int kNumValue = 4 * n - 1;
   std::vector<std::vector<std::pair<c_int, c_float>>> columns;
   columns.resize(kNumParam);
   int value_index = 0;
+
+  // 在泊车场景中:
+  // scale_factor_中的三个元素都是1
+  // weight_end_state_中的三个元素都是0
+  // penalty_dx中的三个元素都是0
+  // weight_x_ref_ 默认是10
+  // weight_dx_ref_ 是0
+  // weight_ddx_ref_ 默认是1
+  // weight_dddx_ref_ 默认是1
 
   // x(i)^2 * w_x_ref
   for (int i = 0; i < n - 1; ++i) {
@@ -63,6 +73,7 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
                                          (scale_factor_[0] * scale_factor_[0]));
   ++value_index;
 
+  // ----------------------------------------------------------------------------
   // x(i)'^2 * (w_dx_ref + penalty_dx)
   for (int i = 0; i < n - 1; ++i) {
     columns[n + i].emplace_back(n + i,
@@ -76,13 +87,15 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
                      (scale_factor_[1] * scale_factor_[1]));
   ++value_index;
 
+  // ----------------------------------------------------------------------------
   auto delta_s_square = delta_s_ * delta_s_;
-  // x(i)''^2 * (w_ddx + 2 * w_dddx / delta_s^2)
+  // x(i)''^2 * (w_ddx + w_dddx / delta_s^2)
   columns[2 * n].emplace_back(2 * n,
                               (weight_ddx_ + weight_dddx_ / delta_s_square) /
                                   (scale_factor_[2] * scale_factor_[2]));
   ++value_index;
 
+  // x(i)''^2 * (w_ddx + 2 * w_dddx / delta_s^2)
   for (int i = 1; i < n - 1; ++i) {
     columns[2 * n + i].emplace_back(
         2 * n + i, (weight_ddx_ + 2.0 * weight_dddx_ / delta_s_square) /
@@ -90,11 +103,18 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
     ++value_index;
   }
 
+  // x(i)''^2 * (w_ddx + w_dddx / delta_s^2 + w_end_ddx)
   columns[3 * n - 1].emplace_back(
       3 * n - 1,
       (weight_ddx_ + weight_dddx_ / delta_s_square + weight_end_state_[2]) /
           (scale_factor_[2] * scale_factor_[2]));
   ++value_index;
+
+  // 这里apollo其实是构建了一个下三角矩阵，所以这里并没有取公式中系数的1/2
+  // 他并不是标准的对称阵形式，但是和标准对称阵是等价的
+  // 标准对称阵是上下都有，且取公式中系数的1/2
+  // 有一点可能的bug是：由于低版本的osqp会自动舍弃下三角部分，并把上三角复制
+  // 到下三角部分。所以apollo这么写可能会丢失一部分信息，导致误差
 
   // -2 * w_dddx / delta_s^2 * x(i)'' * x(i + 1)''
   for (int i = 0; i < n - 1; ++i) {
@@ -127,11 +147,13 @@ void PiecewiseJerkSpeedProblem::CalculateOffset(std::vector<c_float>* q) {
     if (has_x_ref_) {
       q->at(i) += -2.0 * weight_x_ref_ * x_ref_[i] / scale_factor_[0];
     }
+    // 在泊车场景下，has_dx_ref_是false
     if (has_dx_ref_) {
       q->at(n + i) += -2.0 * weight_dx_ref_ * dx_ref_ / scale_factor_[1];
     }
   }
 
+    // 在泊车场景下，has_end_state_ref_是false
   if (has_end_state_ref_) {
     q->at(n - 1) +=
         -2.0 * weight_end_state_[0] * end_state_ref_[0] / scale_factor_[0];

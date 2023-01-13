@@ -140,12 +140,17 @@ void PiecewiseJerkProblem::CalculateAffineConstraint(
   // 3N params bounds on x, x', x''
   // 3(N-1) constraints on x, x', x''
   // 3 constraints on x_init_
+  // 3N个    上下界约束
+  // 3(N-1)  连续性约束
+  // 3个     初始约束
   const int n = static_cast<int>(num_of_knots_);
   const int num_of_variables = 3 * n;
+  // 表示有多少个约束，也就是约束矩阵有多少列
   const int num_of_constraints = num_of_variables + 3 * (n - 1) + 3;
   lower_bounds->resize(num_of_constraints);
   upper_bounds->resize(num_of_constraints);
 
+  // 就是约束矩阵csc形式下的data，pair中的第一个表示行数
   std::vector<std::vector<std::pair<c_int, c_float>>> variables(
       num_of_variables);
 
