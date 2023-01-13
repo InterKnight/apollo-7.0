@@ -735,18 +735,21 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   const std::vector<double>& dds = piecewise_jerk_problem.opt_ddx();
 
   // Assign speed point by gear
-  // 0时刻的点，要和给定的点一摸一样
+  // 0时刻的点，第一个点，单独拎出来赋值，应为后面有 i-1 项
   smoothed_speeds->AppendSpeedPoint(s[0], 0.0, ds[0], dds[0], 0.0);
   const double kEpislon = 1.0e-4;
   const double sEpislon = 1.0e-1;
   // 这里从第二个点开始，因为前面已经添加了第一个点
   for (size_t i = 1; i < num_of_knots; ++i) {
+    // 出现了后退得情况则报错，但似乎没有限制条件来约束这种情况得发生？难道把所有点的得x_ref都设置为最大长度
+    // path_length是为了防止这种情况？
     if (s[i - 1] - s[i] > kEpislon) {
       AERROR << "unexpected decreasing s in speed smoothing at time "
              << static_cast<double>(i) * delta_t << "with total time "
              << total_t;
       return false;
     }
+    // 为什么要将i转换为double？
     smoothed_speeds->AppendSpeedPoint(s[i], delta_t * static_cast<double>(i),
                                       ds[i], dds[i],
                                       (dds[i] - dds[i - 1]) / delta_t);
