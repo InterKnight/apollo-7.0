@@ -57,11 +57,11 @@ void PiecewiseJerkSpeedProblem::CalculateKernel(std::vector<c_float>* P_data,
   // 在泊车场景中:
   // scale_factor_中的三个元素都是1
   // weight_end_state_中的三个元素都是0
-  // penalty_dx_中的三个元素都是0
+  // penalty_dx_ 中所有元素都是0
   // weight_x_ref_ 默认是10
   // weight_dx_ref_ 是0
-  // weight_ddx_ref_ 默认是1
-  // weight_dddx_ref_ 默认是1
+  // weight_ddx_ 默认是1
+  // weight_dddx_ 默认是1
 
   // x(i)^2 * w_x_ref
   for (int i = 0; i < n - 1; ++i) {
