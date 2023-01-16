@@ -119,7 +119,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
         previous_frame->current_frame_planned_trajectory()
             .header()
             .timestamp_sec();
-    // 为什么和下面的cycle time不一样？
+    // 默认4,为什么和下面的cycle time不一样？
     const double planning_cycle_time = FLAGS_open_space_planning_period;
     // 用上一帧的轨迹初始化了一个轨迹
     PublishableTrajectory last_frame_complete_trajectory(
@@ -133,7 +133,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
         &last_frame_complete_trajectory, &replan_reason);
   } else {
     ADEBUG << "Replan due to fallback stop";
-    // 为什么和上面的cycle time不一样？
+    // 默认为0.1,为什么和上面的cycle time不一样？
     const double planning_cycle_time =
         1.0 / static_cast<double>(FLAGS_planning_loop_rate);
     // 以车辆此时的状态生成一个trajectory point，这个vector中只有这一个点

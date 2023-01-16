@@ -767,6 +767,7 @@ bool IterativeAnchoringSmoother::CombinePathAndSpeed(
   CHECK_NOTNULL(discretized_trajectory);
   discretized_trajectory->clear();
   // TODO(Jinyun): move to confs
+  // 以0.1s的间隔,线性插值的方式进行重采样,比之前的点要更密集
   const double kDenseTimeResolution = 0.1;
   const double time_horizon =
       speed_points.TotalTime() + kDenseTimeResolution * 1.0e-6;
@@ -802,6 +803,7 @@ bool IterativeAnchoringSmoother::CombinePathAndSpeed(
   return true;
 }
 
+// 如果是前进,则直接返回;如果是倒车,则将每个轨迹点的theta,s,kappa,v,a都取反.但是为什么能简单取反?
 void IterativeAnchoringSmoother::AdjustPathAndSpeedByGear(
     DiscretizedTrajectory* discretized_trajectory) {
   if (gear_) {
