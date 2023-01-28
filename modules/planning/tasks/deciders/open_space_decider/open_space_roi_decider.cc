@@ -753,6 +753,7 @@ void OpenSpaceRoiDecider::AddBoundaryKeyPoint(
   // TODO(SHU): 1. consider distortion introduced by curvy road; 2. use both
   // round boundaries for single-track road; 3. longitudinal range may not be
   // symmetric
+  // 泊出场景中为 0.2，其他场景中为 1
   const double previous_distance_s = std::min(
       config_.open_space_roi_decider_config().roi_line_segment_length(),
       check_point_s - start_s);
