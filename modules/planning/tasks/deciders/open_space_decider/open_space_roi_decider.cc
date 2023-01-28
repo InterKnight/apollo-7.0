@@ -568,6 +568,7 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
                            is_center_lane_heading_change;
     // Add key points to the left-half boundary
     // 这些key points有什么用？
+    // 这些key point就相当于线段的拐点，有这些key point就相当于有了边界
     AddBoundaryKeyPoint(nearby_path, check_point_s, start_s, end_s,
                         is_anchor_point, true, center_lane_boundary_left,
                         left_lane_boundary, center_lane_s_left,
@@ -775,6 +776,7 @@ void OpenSpaceRoiDecider::AddBoundaryKeyPoint(
   // If the current center-lane checking point is an anchor point, then add
   // current left/right curb boundary point as a key point
   if (is_anchor_point) {
+    // 为什么左加右减？
     double point_vec_cos =
         is_left_curb ? std::cos(current_check_point_heading + M_PI / 2.0)
                      : std::cos(current_check_point_heading - M_PI / 2.0);
@@ -1139,6 +1141,25 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
   right_down -= origin_point;
   right_down.SelfRotate(-origin_heading);
 
+  // Check if current central-lane checking point's mapping on the left/right
+  // road boundary is a key point. The road boundary point is a key point if
+  // one of the following two confitions is satisfied:
+  // 1. the current central-lane point is an anchor point: (a start/end point
+  // or the point on path with large curvatures)
+  // 2. the point on the left/right lane boundary is close to a curb corner
+  // As indicated below:
+  // (#) Key Point Type 1: Lane anchor points
+  // (*) Key Point Type 2: Curb-corner points
+  //                                                         #
+  // Path Direction -->                                     /    /   #
+  // Left Lane Boundary   #--------------------------------#    /   /
+  //                                                           /   /
+  // Center Lane          - - - - - - - - - - - - - - - - - - /   /
+  //                                                             /
+  // Right Lane Boundary  #--------*                 *----------#
+  //                                \               /
+  //                                 *-------------*
+
   const double center_line_s = (left_top_s + right_top_s) / 2.0;
   std::vector<Vec2d> left_lane_boundary;
   std::vector<Vec2d> right_lane_boundary;
@@ -1169,7 +1190,6 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
 
   // If smaller than zero, the parking spot is on the right of the lane
   // Left, right, down or opposite of the boundary is decided when viewing the
-
   // parking spot upward
   const double average_l = (left_top_l + right_top_l) / 2.0;
   std::vector<Vec2d> boundary_points;
@@ -1180,9 +1200,11 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
   if (average_l < 0) {
     // if average_l is lower than zero, the parking spot is on the right
     // lane boundary and assume that the lane half width is average_l
+    // 假设 average_l ，也就是到车库前线中点的距离，就是半个车道宽
     ADEBUG << "average_l is less than 0 in OpenSpaceROI";
     size_t point_size = right_lane_boundary.size();
 
+    // 这是在干嘛？
     for (size_t i = 0; i < point_size; i++) {
       right_lane_boundary[i].SelfRotate(origin_heading);
       right_lane_boundary[i] += origin_point;
@@ -1194,9 +1216,11 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
       right_lane_boundary[i].SelfRotate(-origin_heading);
     }
 
+    // 距离车位左顶点最近(向下取)的车道中心线上的点的s值
     auto point_left_to_left_top_connor_s = std::lower_bound(
         center_lane_s_right.begin(), center_lane_s_right.end(), left_top_s);
 
+    // 距离车位左顶点最近(向下取)的车道中心线上的点的index
     size_t point_left_to_left_top_connor_index = std::distance(
         center_lane_s_right.begin(), point_left_to_left_top_connor_s);
     point_left_to_left_top_connor_index =
@@ -1204,12 +1228,15 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
             ? point_left_to_left_top_connor_index
             : point_left_to_left_top_connor_index - 1;
 
+    // 距离车位左顶点最近(向下取)的右车道边界上的点的指针
     auto point_left_to_left_top_connor_itr =
         right_lane_boundary.begin() + point_left_to_left_top_connor_index;
+
     auto point_right_to_right_top_connor_s = std::upper_bound(
         center_lane_s_right.begin(), center_lane_s_right.end(), right_top_s);
     size_t point_right_to_right_top_connor_index = std::distance(
         center_lane_s_right.begin(), point_right_to_right_top_connor_s);
+    // 距离车位右顶点最近(向上取)的右车道边界上的点的指针
     auto point_right_to_right_top_connor_itr =
         right_lane_boundary.begin() + point_right_to_right_top_connor_index;
 
