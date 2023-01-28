@@ -581,6 +581,7 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
       break;
     }
     index += 1.0;
+    // 正常间隔是2，在泊车场景下是0.2
     check_point_s =
         start_s +
         index *
@@ -1535,6 +1536,8 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
   std::vector<double> left_lane_road_width;
   std::vector<double> right_lane_road_width;
 
+  // 默认是fasle
+  // 得到左边界和右边界
   if (FLAGS_use_road_boundary_from_map) {
     GetRoadBoundaryFromMap(
         nearby_path, center_line_s, origin_point, origin_heading,
@@ -1551,12 +1554,6 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
 
   // Load boundary as line segments in counter-clockwise order
   std::reverse(left_lane_boundary.begin(), left_lane_boundary.end());
-
-  std::vector<Vec2d> boundary_points;
-  std::copy(right_lane_boundary.begin(), right_lane_boundary.end(),
-            std::back_inserter(boundary_points));
-  std::copy(left_lane_boundary.begin(), left_lane_boundary.end(),
-            std::back_inserter(boundary_points));
 
   size_t right_lane_boundary_last_index = right_lane_boundary.size() - 1;
   for (size_t i = 0; i < right_lane_boundary_last_index; i++) {
@@ -1583,13 +1580,22 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
          << "]";
 
   // Fuse line segments into convex contraints
+  // 左右边界融合成一个凸空间
   if (!FuseLineSegments(roi_parking_boundary)) {
     return false;
   }
 
   ADEBUG << "roi_parking_boundary size: [" << roi_parking_boundary->size()
          << "]";
+
+  std::vector<Vec2d> boundary_points;
+  std::copy(right_lane_boundary.begin(), right_lane_boundary.end(),
+            std::back_inserter(boundary_points));
+  std::copy(left_lane_boundary.begin(), left_lane_boundary.end(),
+            std::back_inserter(boundary_points));
+
   // Get xy boundary
+  // std::minmax_element 返回一个pair类型，里面是给定集合里的最大和最小值
   auto xminmax = std::minmax_element(
       boundary_points.begin(), boundary_points.end(),
       [](const Vec2d &a, const Vec2d &b) { return a.x() < b.x(); });
@@ -1602,6 +1608,7 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
       frame->mutable_open_space_info()->mutable_ROI_xy_boundary();
   xy_boundary->assign(ROI_xy_boundary.begin(), ROI_xy_boundary.end());
 
+  // 判断主车是否在边界内
   Vec2d vehicle_xy = Vec2d(vehicle_state_.x(), vehicle_state_.y());
   vehicle_xy -= origin_point;
   vehicle_xy.SelfRotate(-origin_heading);
