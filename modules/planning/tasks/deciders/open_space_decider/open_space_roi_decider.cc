@@ -448,6 +448,7 @@ void OpenSpaceRoiDecider::SetPullOverSpotEndPose(Frame *const frame) {
 }
 
 void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
+  // 根据情况可能是5或者10
   const double kSTargetBuffer =
       config_.open_space_roi_decider_config().end_pose_s_distance();
   const double kSpeedRatio = 0.1;  // after adjust speed is 10% of speed limit
@@ -467,6 +468,7 @@ void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
   common::SLPoint adc_position_sl;
 
   // get nearest reference line
+  // 通过L最小来找到离主车位置最近的参考线，难道参考线是分段的？
   const auto &reference_line_list = frame->reference_line_info();
   ADEBUG << reference_line_list.size();
   const auto reference_line_info = std::min_element(
@@ -480,10 +482,14 @@ void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
                std::fabs(adc_position_sl_b.l());
       });
 
+  // 最近的参考线
   const auto &reference_line = reference_line_info->reference_line();
+  // 主车在参考线坐标上的sl
   reference_line.XYToSL(adc_position, &adc_position_sl);
 
   // target is at reference line
+  // 目标点在参考线上，也就是要开到车道中心线上，s为当前位置加一个系数
+  // 目标点远一点的话，切行车更加的平滑
   const double target_s = adc_position_sl.s() + kSTargetBuffer;
   const auto reference_point = reference_line.GetReferencePoint(target_s);
   const double target_x = reference_point.x();
@@ -517,6 +523,7 @@ void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
   ADEBUG << "reference_line ID: " << reference_line_info->Lanes().Id();
 
   // end pose velocity set to be speed limit
+  // 终点的速度设置为道路限速乘以一个系数
   double target_speed = reference_line.GetSpeedLimitFromS(target_s);
   end_pose->push_back(kSpeedRatio * target_speed);
 }
