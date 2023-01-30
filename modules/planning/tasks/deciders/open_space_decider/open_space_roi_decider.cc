@@ -2166,6 +2166,7 @@ bool OpenSpaceRoiDecider::FilterOutObstacle(const Frame &frame,
   auto obstacle_center_xy = obstacle_box.center();
 
   // xy_boundary in xmin, xmax, ymin, ymax.
+  // 如果障碍物不在可行边界内，则过滤
   const auto &roi_xy_boundary = open_space_info.ROI_xy_boundary();
   obstacle_center_xy -= origin_point;
   obstacle_center_xy.SelfRotate(-origin_heading);
@@ -2193,6 +2194,7 @@ bool OpenSpaceRoiDecider::FilterOutObstacle(const Frame &frame,
   const double filtering_distance =
       config_.open_space_roi_decider_config()
           .perception_obstacle_filtering_distance();
+  // 如果障碍物离本车太远，或者离终点太远，则过滤
   if (vehicle_center_to_obstacle > filtering_distance &&
       end_pose_center_to_obstacle > filtering_distance) {
     return true;
