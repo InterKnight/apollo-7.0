@@ -61,6 +61,7 @@ bool SpeedData::EvaluateByTime(const double t,
   if (size() < 2) {
     return false;
   }
+  // 为了应对看似相等的两个double值的比较
   if (!(front().t() < t + 1.0e-6 && t - 1.0e-6 < back().t())) {
     return false;
   }

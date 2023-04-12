@@ -649,18 +649,23 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
                                              const double init_v,
                                              const double path_length,
                                              SpeedData* smoothed_speeds) {
+  // 默认2
   const double max_forward_v =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_forward_v();
+  // 默认2
   const double max_reverse_v =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_reverse_v();
+  // 默认3
   const double max_forward_acc =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_forward_acc();
+  // 默认2
   const double max_reverse_acc =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_reverse_acc();
+  // 默认4
   const double max_acc_jerk =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .max_acc_jerk();
@@ -669,11 +674,13 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .delta_t();
 
-  // 这是怎么来的
+  // 这是怎么来的？
   const double total_t = 2 * path_length / max_reverse_acc * 10;
   ADEBUG << "total_t is : " << total_t;
+  // 加1不能省
   const size_t num_of_knots = static_cast<size_t>(total_t / delta_t) + 1;
 
+  // 这里把速度和加速度都取了绝对值，这是为什么？
   PiecewiseJerkSpeedProblem piecewise_jerk_problem(
       num_of_knots, delta_t, {0.0, std::abs(init_v), std::abs(init_a)});
 
@@ -682,22 +689,30 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
           .s_curve_config();
 
   // set end constraints
+  // 下限都是0,上限是总长度
   std::vector<std::pair<double, double>> x_bounds(num_of_knots,
                                                   {0.0, path_length});
 
   const double max_v = gear_ ? max_forward_v : max_reverse_v;
   const double max_acc = gear_ ? max_forward_acc : max_reverse_acc;
 
+  // fmax只能对比float或double，max可以对比很多不同类型
   const auto upper_dx = std::fmax(max_v, std::abs(init_v));
+  // 速度的下限是0,上线是设定的最大速度与初始速度之间的较大值
   std::vector<std::pair<double, double>> dx_bounds(num_of_knots,
                                                    {0.0, upper_dx});
+  // 加速度的上下限都是从配置文件中读取的,分前进和倒车两种情况
   std::vector<std::pair<double, double>> ddx_bounds(num_of_knots,
                                                     {-max_acc, max_acc});
 
+  // 终点一定是那个点，且速度和加速度一定是0
   x_bounds[num_of_knots - 1] = std::make_pair(path_length, path_length);
   dx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
   ddx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
 
+  // 为什么所有点的ref都一样，都为总长度？
+  // 理论上应该是每个点实际的s
+  // 推测可能是因为这个影响不大？
   std::vector<double> x_ref(num_of_knots, path_length);
   piecewise_jerk_problem.set_x_ref(s_curve_config.ref_s_weight(),
                                    std::move(x_ref));
@@ -720,16 +735,21 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   const std::vector<double>& dds = piecewise_jerk_problem.opt_ddx();
 
   // Assign speed point by gear
+  // 0时刻的点，第一个点，单独拎出来赋值，应为后面有 i-1 项
   smoothed_speeds->AppendSpeedPoint(s[0], 0.0, ds[0], dds[0], 0.0);
   const double kEpislon = 1.0e-4;
   const double sEpislon = 1.0e-1;
+  // 这里从第二个点开始，因为前面已经添加了第一个点
   for (size_t i = 1; i < num_of_knots; ++i) {
+    // 出现了后退得情况则报错，但似乎没有限制条件来约束这种情况得发生？难道把所有点的得x_ref都设置为最大长度
+    // path_length是为了防止这种情况？
     if (s[i - 1] - s[i] > kEpislon) {
       AERROR << "unexpected decreasing s in speed smoothing at time "
              << static_cast<double>(i) * delta_t << "with total time "
              << total_t;
       return false;
     }
+    // 为什么要将i转换为double？
     smoothed_speeds->AppendSpeedPoint(s[i], delta_t * static_cast<double>(i),
                                       ds[i], dds[i],
                                       (dds[i] - dds[i - 1]) / delta_t);
@@ -747,6 +767,7 @@ bool IterativeAnchoringSmoother::CombinePathAndSpeed(
   CHECK_NOTNULL(discretized_trajectory);
   discretized_trajectory->clear();
   // TODO(Jinyun): move to confs
+  // 以0.1s的间隔,线性插值的方式进行重采样,比之前的点要更密集
   const double kDenseTimeResolution = 0.1;
   const double time_horizon =
       speed_points.TotalTime() + kDenseTimeResolution * 1.0e-6;
@@ -782,6 +803,7 @@ bool IterativeAnchoringSmoother::CombinePathAndSpeed(
   return true;
 }
 
+// 如果是前进,则直接返回;如果是倒车,则将每个轨迹点的theta,s,kappa,v,a都取反.但是为什么能简单取反?
 void IterativeAnchoringSmoother::AdjustPathAndSpeedByGear(
     DiscretizedTrajectory* discretized_trajectory) {
   if (gear_) {

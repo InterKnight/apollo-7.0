@@ -82,6 +82,7 @@ Status OpenSpaceRoiDecider::Process(Frame *frame) {
     const auto &routing_request =
         frame->local_view().routing->routing_request();
 
+    // 从rounting中获取到车位的id
     if (routing_request.has_parking_info() &&
         routing_request.parking_info().has_parking_space_id()) {
       target_parking_spot_id_ =
@@ -447,6 +448,7 @@ void OpenSpaceRoiDecider::SetPullOverSpotEndPose(Frame *const frame) {
 }
 
 void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
+  // 根据情况可能是5或者10
   const double kSTargetBuffer =
       config_.open_space_roi_decider_config().end_pose_s_distance();
   const double kSpeedRatio = 0.1;  // after adjust speed is 10% of speed limit
@@ -466,6 +468,7 @@ void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
   common::SLPoint adc_position_sl;
 
   // get nearest reference line
+  // 通过L最小来找到离主车位置最近的参考线，难道参考线是分段的？
   const auto &reference_line_list = frame->reference_line_info();
   ADEBUG << reference_line_list.size();
   const auto reference_line_info = std::min_element(
@@ -479,10 +482,14 @@ void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
                std::fabs(adc_position_sl_b.l());
       });
 
+  // 最近的参考线
   const auto &reference_line = reference_line_info->reference_line();
+  // 主车在参考线坐标上的sl
   reference_line.XYToSL(adc_position, &adc_position_sl);
 
   // target is at reference line
+  // 目标点在参考线上，也就是要开到车道中心线上，s为当前位置加一个系数
+  // 目标点远一点的话，切行车更加的平滑
   const double target_s = adc_position_sl.s() + kSTargetBuffer;
   const auto reference_point = reference_line.GetReferencePoint(target_s);
   const double target_x = reference_point.x();
@@ -516,6 +523,7 @@ void OpenSpaceRoiDecider::SetParkAndGoEndPose(Frame *const frame) {
   ADEBUG << "reference_line ID: " << reference_line_info->Lanes().Id();
 
   // end pose velocity set to be speed limit
+  // 终点的速度设置为道路限速乘以一个系数
   double target_speed = reference_line.GetSpeedLimitFromS(target_s);
   end_pose->push_back(kSpeedRatio * target_speed);
 }
@@ -568,6 +576,7 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
                            is_center_lane_heading_change;
     // Add key points to the left-half boundary
     // 这些key points有什么用？
+    // 这些key point就相当于线段的拐点，有这些key point就相当于有了边界
     AddBoundaryKeyPoint(nearby_path, check_point_s, start_s, end_s,
                         is_anchor_point, true, center_lane_boundary_left,
                         left_lane_boundary, center_lane_s_left,
@@ -581,6 +590,7 @@ void OpenSpaceRoiDecider::GetRoadBoundary(
       break;
     }
     index += 1.0;
+    // 正常间隔是2，在泊车场景下是0.2
     check_point_s =
         start_s +
         index *
@@ -752,6 +762,7 @@ void OpenSpaceRoiDecider::AddBoundaryKeyPoint(
   // TODO(SHU): 1. consider distortion introduced by curvy road; 2. use both
   // round boundaries for single-track road; 3. longitudinal range may not be
   // symmetric
+  // 泊出场景中为 0.2，其他场景中为 1
   const double previous_distance_s = std::min(
       config_.open_space_roi_decider_config().roi_line_segment_length(),
       check_point_s - start_s);
@@ -773,6 +784,7 @@ void OpenSpaceRoiDecider::AddBoundaryKeyPoint(
   // If the current center-lane checking point is an anchor point, then add
   // current left/right curb boundary point as a key point
   if (is_anchor_point) {
+    // 为什么左加右减？
     double point_vec_cos =
         is_left_curb ? std::cos(current_check_point_heading + M_PI / 2.0)
                      : std::cos(current_check_point_heading - M_PI / 2.0);
@@ -1137,6 +1149,25 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
   right_down -= origin_point;
   right_down.SelfRotate(-origin_heading);
 
+  // Check if current central-lane checking point's mapping on the left/right
+  // road boundary is a key point. The road boundary point is a key point if
+  // one of the following two confitions is satisfied:
+  // 1. the current central-lane point is an anchor point: (a start/end point
+  // or the point on path with large curvatures)
+  // 2. the point on the left/right lane boundary is close to a curb corner
+  // As indicated below:
+  // (#) Key Point Type 1: Lane anchor points
+  // (*) Key Point Type 2: Curb-corner points
+  //                                                         #
+  // Path Direction -->                                     /    /   #
+  // Left Lane Boundary   #--------------------------------#    /   /
+  //                                                           /   /
+  // Center Lane          - - - - - - - - - - - - - - - - - - /   /
+  //                                                             /
+  // Right Lane Boundary  #--------*                 *----------#
+  //                                \               /
+  //                                 *-------------*
+
   const double center_line_s = (left_top_s + right_top_s) / 2.0;
   std::vector<Vec2d> left_lane_boundary;
   std::vector<Vec2d> right_lane_boundary;
@@ -1167,7 +1198,6 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
 
   // If smaller than zero, the parking spot is on the right of the lane
   // Left, right, down or opposite of the boundary is decided when viewing the
-
   // parking spot upward
   const double average_l = (left_top_l + right_top_l) / 2.0;
   std::vector<Vec2d> boundary_points;
@@ -1178,9 +1208,11 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
   if (average_l < 0) {
     // if average_l is lower than zero, the parking spot is on the right
     // lane boundary and assume that the lane half width is average_l
+    // 假设 average_l ，也就是到车库前线中点的距离，就是半个车道宽
     ADEBUG << "average_l is less than 0 in OpenSpaceROI";
     size_t point_size = right_lane_boundary.size();
 
+    // 这是在干嘛？
     for (size_t i = 0; i < point_size; i++) {
       right_lane_boundary[i].SelfRotate(origin_heading);
       right_lane_boundary[i] += origin_point;
@@ -1192,9 +1224,11 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
       right_lane_boundary[i].SelfRotate(-origin_heading);
     }
 
+    // 距离车位左顶点最近(向下取)的车道中心线上的点的s值
     auto point_left_to_left_top_connor_s = std::lower_bound(
         center_lane_s_right.begin(), center_lane_s_right.end(), left_top_s);
 
+    // 距离车位左顶点最近(向下取)的车道中心线上的点的index
     size_t point_left_to_left_top_connor_index = std::distance(
         center_lane_s_right.begin(), point_left_to_left_top_connor_s);
     point_left_to_left_top_connor_index =
@@ -1202,44 +1236,107 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
             ? point_left_to_left_top_connor_index
             : point_left_to_left_top_connor_index - 1;
 
+    // 距离车位左顶点最近(向下取)的右车道边界上的点的指针
     auto point_left_to_left_top_connor_itr =
         right_lane_boundary.begin() + point_left_to_left_top_connor_index;
+
     auto point_right_to_right_top_connor_s = std::upper_bound(
         center_lane_s_right.begin(), center_lane_s_right.end(), right_top_s);
     size_t point_right_to_right_top_connor_index = std::distance(
         center_lane_s_right.begin(), point_right_to_right_top_connor_s);
+    // 距离车位右顶点最近(向上取)的右车道边界上的点的指针
     auto point_right_to_right_top_connor_itr =
         right_lane_boundary.begin() + point_right_to_right_top_connor_index;
 
+    // 将右车道边界从 起始点 到 距离车位左顶点最近(向下取)的点 之间的点加入到 boundary_points中
+    //
+    //
+    //
+    //------------
     std::copy(right_lane_boundary.begin(), point_left_to_left_top_connor_itr,
               std::back_inserter(boundary_points));
 
     std::vector<Vec2d> parking_spot_boundary{left_top, left_down, right_down,
                                              right_top};
 
+    // 将库位的4个角点加入到 boundary_points中
+    //
+    //
+    //
+    //------------
+    //           |      |
+    //           |      |
+    //           |      |
+    //           -------
     std::copy(parking_spot_boundary.begin(), parking_spot_boundary.end(),
               std::back_inserter(boundary_points));
 
+    // 将右车道边界从 距离车位右顶点最近(向下取)的点 到 终点 之间的点加入到 boundary_points中
+    //
+    //
+    //
+    //------------      -------------------
+    //           |      |
+    //           |      |
+    //           |      |
+    //           -------
     std::copy(point_right_to_right_top_connor_itr, right_lane_boundary.end(),
               std::back_inserter(boundary_points));
 
+    // 将左车道边界从 起点 到 终点 之间的点 逆序 加入到 boundary_points中
+    // -------------------------------------
+    //
+    //
+    //------------      -------------------
+    //           |      |
+    //           |      |
+    //           |      |
+    //           -------
     std::reverse_copy(left_lane_boundary.begin(), left_lane_boundary.end(),
                       std::back_inserter(boundary_points));
 
     // reinsert the initial point to the back to from closed loop
+    // 重新将第一个点加入到最后，形成闭环
+    // -------------------------------------
+    //|                                    |
+    //|                                    |
+    //------------      -------------------
+    //           |      |
+    //           |      |
+    //           |      |
+    //           -------
     boundary_points.push_back(right_lane_boundary.front());
 
     // disassemble line into line2d segments
+    // 上面的 boundary_points 是点的集合，现在转换成线段
+    // 右车道边界从 起点 到 距离车位左顶点最近(向下取)的点 之间的点连成线段，加入 roi_parking_boundary
+    //
+    //
+    //
+    //------------
     for (size_t i = 0; i < point_left_to_left_top_connor_index; i++) {
       std::vector<Vec2d> segment{right_lane_boundary[i],
                                  right_lane_boundary[i + 1]};
       roi_parking_boundary->push_back(segment);
     }
 
+    // 右车道边界 距离车位左顶点最近(向下取)的点 到 车位左顶点 之间的点连成线段，加入 roi_parking_boundary
+    //
+    //
+    //
+    //------------ 。
     std::vector<Vec2d> left_stitching_segment{
         right_lane_boundary[point_left_to_left_top_connor_index], left_top};
     roi_parking_boundary->push_back(left_stitching_segment);
 
+    //
+    //
+    //
+    //------------ 。     。
+    //             |      |
+    //             |      |
+    //             |      |
+    //             。-----。
     std::vector<Vec2d> left_parking_spot_segment{left_top, left_down};
     std::vector<Vec2d> down_parking_spot_segment{left_down, right_down};
     std::vector<Vec2d> right_parking_spot_segment{right_down, right_top};
@@ -1247,10 +1344,26 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
     roi_parking_boundary->push_back(down_parking_spot_segment);
     roi_parking_boundary->push_back(right_parking_spot_segment);
 
+    //
+    //
+    //
+    //------------ 。     。--
+    //             |      |
+    //             |      |
+    //             |      |
+    //             。-----。
     std::vector<Vec2d> right_stitching_segment{
         right_top, right_lane_boundary[point_right_to_right_top_connor_index]};
     roi_parking_boundary->push_back(right_stitching_segment);
 
+    //
+    //
+    //
+    //------------ 。     。--------------------
+    //             |      |
+    //             |      |
+    //             |      |
+    //             。-----。
     size_t right_lane_boundary_last_index = right_lane_boundary.size() - 1;
     for (size_t i = point_right_to_right_top_connor_index;
          i < right_lane_boundary_last_index; i++) {
@@ -1259,6 +1372,14 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
       roi_parking_boundary->push_back(segment);
     }
 
+    //------------------------------------------
+    //
+    //
+    //------------ 。     。--------------------
+    //             |      |
+    //             |      |
+    //             |      |
+    //             。-----。
     size_t left_lane_boundary_last_index = left_lane_boundary.size() - 1;
     for (size_t i = left_lane_boundary_last_index; i > 0; i--) {
       std::vector<Vec2d> segment{left_lane_boundary[i],
@@ -1359,6 +1480,7 @@ bool OpenSpaceRoiDecider::GetParkingBoundary(
   }
 
   // Fuse line segments into convex contraints
+  // 将线段融合成一个凸空间
   if (!FuseLineSegments(roi_parking_boundary)) {
     AERROR << "FuseLineSegments failed in parking ROI";
     return false;
@@ -1535,6 +1657,8 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
   std::vector<double> left_lane_road_width;
   std::vector<double> right_lane_road_width;
 
+  // 默认是fasle
+  // 得到左边界和右边界
   if (FLAGS_use_road_boundary_from_map) {
     GetRoadBoundaryFromMap(
         nearby_path, center_line_s, origin_point, origin_heading,
@@ -1551,12 +1675,6 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
 
   // Load boundary as line segments in counter-clockwise order
   std::reverse(left_lane_boundary.begin(), left_lane_boundary.end());
-
-  std::vector<Vec2d> boundary_points;
-  std::copy(right_lane_boundary.begin(), right_lane_boundary.end(),
-            std::back_inserter(boundary_points));
-  std::copy(left_lane_boundary.begin(), left_lane_boundary.end(),
-            std::back_inserter(boundary_points));
 
   size_t right_lane_boundary_last_index = right_lane_boundary.size() - 1;
   for (size_t i = 0; i < right_lane_boundary_last_index; i++) {
@@ -1583,13 +1701,22 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
          << "]";
 
   // Fuse line segments into convex contraints
+  // 左右边界融合成一个凸空间
   if (!FuseLineSegments(roi_parking_boundary)) {
     return false;
   }
 
   ADEBUG << "roi_parking_boundary size: [" << roi_parking_boundary->size()
          << "]";
+
+  std::vector<Vec2d> boundary_points;
+  std::copy(right_lane_boundary.begin(), right_lane_boundary.end(),
+            std::back_inserter(boundary_points));
+  std::copy(left_lane_boundary.begin(), left_lane_boundary.end(),
+            std::back_inserter(boundary_points));
+
   // Get xy boundary
+  // std::minmax_element 返回一个pair类型，里面是给定集合里的最大和最小值
   auto xminmax = std::minmax_element(
       boundary_points.begin(), boundary_points.end(),
       [](const Vec2d &a, const Vec2d &b) { return a.x() < b.x(); });
@@ -1602,6 +1729,7 @@ bool OpenSpaceRoiDecider::GetParkAndGoBoundary(
       frame->mutable_open_space_info()->mutable_ROI_xy_boundary();
   xy_boundary->assign(ROI_xy_boundary.begin(), ROI_xy_boundary.end());
 
+  // 判断主车是否在边界内
   Vec2d vehicle_xy = Vec2d(vehicle_state_.x(), vehicle_state_.y());
   vehicle_xy -= origin_point;
   vehicle_xy.SelfRotate(-origin_heading);
@@ -1659,8 +1787,10 @@ bool OpenSpaceRoiDecider::GetParkingSpot(Frame *const frame,
   if (previous_open_space_info.target_parking_lane() != nullptr &&
       previous_open_space_info.target_parking_spot_id() ==
           frame->open_space_info().target_parking_spot_id()) {
+    // 车库所在车道的信息在frame中有
     nearest_lane = previous_open_space_info.target_parking_lane();
   } else {
+    // 根据车辆位置找到地图中最近的一条车道
     int status = HDMapUtil::BaseMap().GetNearestLaneWithHeading(
         point, 10.0, vehicle_state_.heading(), M_PI / 2.0, &nearest_lane,
         &vehicle_lane_s, &vehicle_lane_l);
@@ -1896,8 +2026,10 @@ bool OpenSpaceRoiDecider::FuseLineSegments(
       return false;
     }
     size_t cur_segments_size = cur_segment->size();
+    // 倒数第二个点，应该就是第一个点，因为只有两个点
     auto cur_second_to_last_point = cur_segment->at(cur_segments_size - 2);
     auto next_second_point = next_segment->at(1);
+    // 同起点两个向量乘积小于0,那它们夹角就是钝角或平角。那就构成非凸结构，需要把这些去掉
     if (CrossProd(cur_second_to_last_point, cur_last_point, next_second_point) <
         0.0) {
       cur_segment->push_back(next_second_point);
@@ -2034,6 +2166,7 @@ bool OpenSpaceRoiDecider::FilterOutObstacle(const Frame &frame,
   auto obstacle_center_xy = obstacle_box.center();
 
   // xy_boundary in xmin, xmax, ymin, ymax.
+  // 如果障碍物不在可行边界内，则过滤
   const auto &roi_xy_boundary = open_space_info.ROI_xy_boundary();
   obstacle_center_xy -= origin_point;
   obstacle_center_xy.SelfRotate(-origin_heading);
@@ -2061,6 +2194,7 @@ bool OpenSpaceRoiDecider::FilterOutObstacle(const Frame &frame,
   const double filtering_distance =
       config_.open_space_roi_decider_config()
           .perception_obstacle_filtering_distance();
+  // 如果障碍物离本车太远，或者离终点太远，则过滤
   if (vehicle_center_to_obstacle > filtering_distance &&
       end_pose_center_to_obstacle > filtering_distance) {
     return true;

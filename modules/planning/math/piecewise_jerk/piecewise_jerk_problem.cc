@@ -140,12 +140,17 @@ void PiecewiseJerkProblem::CalculateAffineConstraint(
   // 3N params bounds on x, x', x''
   // 3(N-1) constraints on x, x', x''
   // 3 constraints on x_init_
+  // 3N个    上下界约束
+  // 3(N-1)  连续性约束
+  // 3个     初始约束
   const int n = static_cast<int>(num_of_knots_);
   const int num_of_variables = 3 * n;
+  // 表示有多少个约束，也就是约束矩阵有多少列，可提前根据公式算得
   const int num_of_constraints = num_of_variables + 3 * (n - 1) + 3;
   lower_bounds->resize(num_of_constraints);
   upper_bounds->resize(num_of_constraints);
 
+  // 就是约束矩阵csc形式下的data，pair中的第一个表示行数
   std::vector<std::vector<std::pair<c_int, c_float>>> variables(
       num_of_variables);
 
@@ -176,6 +181,7 @@ void PiecewiseJerkProblem::CalculateAffineConstraint(
   }
   CHECK_EQ(constraint_index, num_of_variables);
 
+  // 这里只有n-1个元素
   // x(i->i+1)''' = (x(i+1)'' - x(i)'') / delta_s
   for (int i = 0; i + 1 < n; ++i) {
     variables[2 * n + i].emplace_back(constraint_index, -1.0);
@@ -187,6 +193,13 @@ void PiecewiseJerkProblem::CalculateAffineConstraint(
     ++constraint_index;
   }
 
+  // 注意以下两个连续性约束方程都可以有两种写法，下面只写了一种，区别在于
+  // x(i->i+1)''' = (x(i+1)'' - x(i)'') / delta_s
+  // or
+  // x(i->i+1)''' = (x(i)'' - x(i-1)'') / delta_s
+  // 理论上来说两者是等价得，但是未验证
+  
+  // 这里只有n-1个元素
   // x(i+1)' - x(i)' - 0.5 * delta_s * x(i)'' - 0.5 * delta_s * x(i+1)'' = 0
   for (int i = 0; i + 1 < n; ++i) {
     variables[n + i].emplace_back(constraint_index, -1.0 * scale_factor_[2]);
@@ -200,6 +213,7 @@ void PiecewiseJerkProblem::CalculateAffineConstraint(
     ++constraint_index;
   }
 
+  // 这里只有n-1个元素
   // x(i+1) - x(i) - delta_s * x(i)'
   // - 1/3 * delta_s^2 * x(i)'' - 1/6 * delta_s^2 * x(i+1)''
   auto delta_s_sq_ = delta_s_ * delta_s_;

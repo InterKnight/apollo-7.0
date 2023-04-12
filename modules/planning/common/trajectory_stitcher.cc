@@ -118,7 +118,7 @@ void TrajectoryStitcher::TransformLastPublishedTrajectory(
    (or) 3. the position deviation from actual and target is too high
 */
 // 轨迹缝合，利用上一帧的轨迹，减少计算量
-std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchi1ngTrajectory(
+std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchingTrajectory(
     const VehicleState& vehicle_state, const double current_timestamp,
     const double planning_cycle_time, const size_t preserved_points_num,
     const bool replan_by_offset, const PublishableTrajectory* prev_trajectory,
@@ -246,6 +246,7 @@ std::vector<TrajectoryPoint> TrajectoryStitcher::ComputeStitchi1ngTrajectory(
   std::vector<TrajectoryPoint> stitching_trajectory(
       prev_trajectory->begin() +
           std::max(0, static_cast<int>(matched_index - preserved_points_num)),
+      // 为什么要加1?
       prev_trajectory->begin() + forward_time_index + 1);
   ADEBUG << "stitching_trajectory size: " << stitching_trajectory.size();
 

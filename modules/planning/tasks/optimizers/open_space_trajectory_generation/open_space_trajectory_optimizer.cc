@@ -153,6 +153,7 @@ Status OpenSpaceTrajectoryOptimizer::Plan(
     dual_n_result_ds_vec.resize(size);
 
     // In for loop
+    // 针对每一段轨迹
     ADEBUG << "Trajectories size in smoother is " << size;
     for (size_t i = 0; i < size; ++i) {
       LoadHybridAstarResultInEigen(&partition_trajectories[i], &xWS_vec[i],
