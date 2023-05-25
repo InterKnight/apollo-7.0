@@ -105,6 +105,7 @@ Status OpenSpaceTrajectoryPartition::Process() {
   PartitionTrajectory(*interpolated_trajectory_result_ptr,
                       partitioned_trajectories);
 
+  // 没看懂这个初始化的过程，为啥要调整时间和距离呢？
   const auto& open_space_status =
       injector_->planning_context()->planning_status().open_space();
   if (!open_space_status.position_init() &&
@@ -117,6 +118,7 @@ Status OpenSpaceTrajectoryPartition::Process() {
         open_space_info_ptr->mutable_chosen_partitioned_trajectory();
     auto* mutable_trajectory =
         open_space_info_ptr->mutable_stitched_trajectory_result();
+    // 调整这段轨迹中每个点的时间和s，以此时距离本车最近的点的时间和s为原点
     AdjustRelativeTimeAndS(open_space_info.partitioned_trajectories(), 0, 0,
                            mutable_trajectory, chosen_partitioned_trajectory);
     return Status::OK();
@@ -164,7 +166,8 @@ Status OpenSpaceTrajectoryPartition::Process() {
     flag_change_to_next = CheckReachTrajectoryEnd(
         trajectory, gear, trajectories_size, i, &current_trajectory_index,
         &current_trajectory_point_index);
-    // 不知道是用来干嘛的？
+    // 如果到达轨迹终点，且本段轨迹之前没走完过，则更新本段轨迹到TrajHistory中
+    // 这里更新到TrajHistory表示已经走完了这段轨迹
     if (flag_change_to_next &&
         !CheckTrajTraversed(trajectories_encodings[current_trajectory_index])) {
       UpdateTrajHistory(trajectories_encodings[current_trajectory_index]);
@@ -207,7 +210,7 @@ Status OpenSpaceTrajectoryPartition::Process() {
         path_point_box.Shift(shift_vec);
         double iou_ratio =
             Polygon2d(ego_box_).ComputeIoU(Polygon2d(path_point_box));
-        // 将符合基本条件的点，全部加入到这个有限队列中，里面存放了点的index和iou
+        // 将符合基本条件的点，全部加入到这个优先队列中，里面存放了点的index和iou
         closest_point.emplace(j, iou_ratio);
       }
     }
@@ -237,13 +240,14 @@ Status OpenSpaceTrajectoryPartition::Process() {
         // 所有轨迹中，与此时本车位置最近的轨迹点
         current_trajectory_point_index =
             closest_point_on_trajs.top().first.second;
-        // 判断目前选出来的点所在的那段轨迹，之前是否有被选中过
-        // 如果有，则把这个点抛弃，如果没有，则用这个点，并把这个信息更新到frame中
+        // 判断目前选出来的点所在的那段轨迹，之前是否已经走完过
+        // 如果是，则把这个点抛弃，如果不是，则用这个点，并把这个信息更新到TrajHistory中
         if (CheckTrajTraversed(
                 trajectories_encodings[current_trajectory_index])) {
           closest_point_on_trajs.pop();
         } else {
           closest_and_not_repeated_traj_found = true;
+          // 这里不等走完，选中一个点就会更新TrajHistory
           UpdateTrajHistory(trajectories_encodings[current_trajectory_index]);
           break;
         }
@@ -254,6 +258,8 @@ Status OpenSpaceTrajectoryPartition::Process() {
       }
     }
 
+    // 如果没有找到合适的点，或者找到的点所在轨迹之前走完过，就启用失败安全模式
+    // 这个模式对轨迹点的选点要求更低，只要距离本车足够近就可以，没有两个heading的约束
     if (use_fail_safe_search) {
       if (!UseFailSafeSearch(*partitioned_trajectories, trajectories_encodings,
                              &current_trajectory_index,
@@ -273,6 +279,7 @@ Status OpenSpaceTrajectoryPartition::Process() {
 
   ADEBUG << "chosen_partitioned_trajectory [" << trajectory->size() << "]";
 
+  // 默认是true,如果到了要换挡的时候，就生成换挡轨迹
   if (FLAGS_use_gear_shift_trajectory) {
     if (InsertGearShiftTrajectory(flag_change_to_next, current_trajectory_index,
                                   open_space_info.partitioned_trajectories(),
@@ -383,6 +390,7 @@ bool OpenSpaceTrajectoryPartition::EncodeTrajectory(
   return true;
 }
 
+// 判断轨迹之前是否已经完全走完过
 bool OpenSpaceTrajectoryPartition::CheckTrajTraversed(
     const std::string& trajectory_encoding_to_check) {
   const auto& open_space_status =
@@ -393,6 +401,9 @@ bool OpenSpaceTrajectoryPartition::CheckTrajTraversed(
   if (index_history_size <= 1) {
     return false;
   }
+  // 这里注意有一个 -1 ，表示把最后一个元素排除在外了
+  // 最后一个元素代表的轨迹，有可能是正在走，但是没走完的轨迹
+  // 而前面的轨迹应该是都已经完全走完的
   for (int i = 0; i < index_history_size - 1; i++) {
     const auto& index_history =
         open_space_status.partitioned_trajectories_index_history(i);
@@ -641,6 +652,7 @@ bool OpenSpaceTrajectoryPartition::UseFailSafeSearch(
       const double path_point_theta = path_point.theta();
       const Vec2d tracking_vector(path_point_x - ego_x_, path_point_y - ego_y_);
       const double distance = tracking_vector.Length();
+      // 只有一个距离的条件，比正常的少了很多条件
       if (distance < distance_search_range_) {
         // get vehicle box and path point box, compute IOU
         Box2d path_point_box({path_point_x, path_point_y}, path_point_theta,
@@ -660,6 +672,7 @@ bool OpenSpaceTrajectoryPartition::UseFailSafeSearch(
           std::make_pair(i, closest_point_index), max_iou_ratio);
     }
   }
+  // 如果没有距离本车位置足够近的轨迹点，则失败了
   if (failsafe_closest_point_on_trajs.empty()) {
     return false;
   } else {
@@ -695,8 +708,10 @@ bool OpenSpaceTrajectoryPartition::InsertGearShiftTrajectory(
       last_frame->open_space_info().gear_switch_states();
   auto* current_gear_status =
       frame_->mutable_open_space_info()->mutable_gear_switch_states();
+  // 怎么感觉这一步是多此一举？这两个从上面看来一定是相等的
   *(current_gear_status) = last_gear_status;
 
+  // 如果要切换轨迹了，也就是要换挡了,或者换挡没结束，就生成换挡轨迹，否则就什么都不做
   if (flag_change_to_next || !current_gear_status->gear_shift_period_finished) {
     current_gear_status->gear_shift_period_finished = false;
     if (current_gear_status->gear_shift_period_started) {
@@ -728,6 +743,7 @@ bool OpenSpaceTrajectoryPartition::InsertGearShiftTrajectory(
   return true;
 }
 
+// 生成换挡的轨迹，原地静止的轨迹
 void OpenSpaceTrajectoryPartition::GenerateGearShiftTrajectory(
     const canbus::Chassis::GearPosition& gear_position,
     TrajGearPair* gear_switch_idle_time_trajectory) {
