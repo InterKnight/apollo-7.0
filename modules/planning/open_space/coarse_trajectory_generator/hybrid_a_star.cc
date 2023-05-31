@@ -127,6 +127,11 @@ bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
     for (const auto& obstacle_linesegments : obstacles_linesegments_vec_) {
       for (const common::math::LineSegment2d& linesegment :
            obstacle_linesegments) {
+        // 为什么这里要用一个box和一个线段求交点？这个计算量很大
+        // 为什么不直接判断两个box之间是否有重叠，这个命名很简单，参考box2d.cc的283行
+        // 为了将目标车位的边界也加入到碰撞检测中来，但是感觉只为了这个就把障碍物的碰撞检测
+        // 也采用这种耗时巨大的方式有点不划算，实在需要的话可以采用分开的方式。障碍物用box，
+        // 目标车位是线段
         if (bounding_box.HasOverlap(linesegment)) {
           ADEBUG << "collision start at x: " << linesegment.start().x();
           ADEBUG << "collision start at y: " << linesegment.start().y();
