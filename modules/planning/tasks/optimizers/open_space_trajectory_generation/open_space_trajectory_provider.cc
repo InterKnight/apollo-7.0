@@ -100,7 +100,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
     return Status::OK();
   }
   // Start thread when getting in Process() for the first time
-  // 默认是false，不单独开线程
+  // 默认是true
   if (FLAGS_enable_open_space_planner_thread && !thread_init_flag_) {
     task_future_ = cyber::Async(
         &OpenSpaceTrajectoryProvider::GenerateTrajectoryThread, this);
@@ -147,6 +147,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
   // Get open_space_info from current frame
   const auto& open_space_info = frame_->open_space_info();
 
+  // 默认是true
   if (FLAGS_enable_open_space_planner_thread) {
     ADEBUG << "Open space plan in multi-threads mode";
 
