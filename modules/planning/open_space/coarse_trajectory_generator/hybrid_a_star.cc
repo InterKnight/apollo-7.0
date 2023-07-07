@@ -35,6 +35,7 @@ HybridAStar::HybridAStar(const PlannerOpenSpaceConfig& open_space_conf) {
       std::make_unique<ReedShepp>(vehicle_param_, planner_open_space_config_);
   grid_a_star_heuristic_generator_ =
       std::make_unique<GridSearch>(planner_open_space_config_);
+  // default 10
   next_node_num_ =
       planner_open_space_config_.warm_start_config().next_node_num();
   // 最大前轮转角是最大方向盘转角乘以一个系数
@@ -85,6 +86,8 @@ bool HybridAStar::RSPCheck(
   return ValidityCheck(node);
 }
 
+// pass a node which maybe contain more than 1 step
+// Check each step for crossing the border or collision
 bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
   CHECK_NOTNULL(node);
   // GT是greater than 的简写,数字后面加U表示用 unsigned int类型存储数字，默认是int，加U就可以减小空间消耗
@@ -667,8 +670,8 @@ bool HybridAStar::TrajectoryPartition(
               3
              /
             /
-           4 
-*/     
+           4
+*/
     if (gear != current_gear) {
       current_traj->x.push_back(x[i]);
       current_traj->y.push_back(y[i]);
@@ -843,7 +846,7 @@ bool HybridAStar::Plan(
     // 用RS曲线试试运气，运气爆棚可以到达终点，则搜索结束，理论上这不应该每次都试把？
     // 推测可能是因为每次开始用混合A*搜索路径时，车辆离车位已经很近了，默认5m左右，
     // 所以这时候应该很快能找到合适路径，每次都试也可以
-    
+
     // 在简单无障碍物的环境下测试了一下，改成2个点算一次（explored_node_num % 2 == 0）后，
     // rs_time减小了，explored_node_num基本不变，总时间减小约20%
     // 但整个混合A*不稳定，多次跑的结果不一致，差距大于20%，所以改的意义也不大
@@ -876,8 +879,8 @@ bool HybridAStar::Plan(
         const double start_time = Clock::NowInSeconds();
         CalculateNodeCost(current_node, next_node);
         const double end_time = Clock::NowInSeconds();
-        // 这里叫heuristic_time其实不准确，这个过程包含两部分，f和h
-        // 其中f需要计算，h直接查表
+        // 这里叫heuristic_time其实不准确，这个过程包含两部分，g和h
+        // 其中g需要计算，h直接查表
         heuristic_time += end_time - start_time;
         open_set_.emplace(next_node->GetIndex(), next_node);
         open_pq_.emplace(next_node->GetIndex(), next_node->GetCost());
