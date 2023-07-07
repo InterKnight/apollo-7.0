@@ -68,7 +68,7 @@ bool PlanningComponent::Init() {
   // 但vscode仍任务它指向的是PlanningBase类型
   planning_base_->Init(config_);
 
-  // 语法解析？
+  // 这里vscode对CreateReader函数的跳转还是错的，还是通过搜索来的靠谱
   routing_reader_ = node_->CreateReader<RoutingResponse>(
       config_.topic_config().routing_response_topic(),
       [this](const std::shared_ptr<RoutingResponse>& routing) {

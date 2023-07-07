@@ -100,7 +100,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
     return Status::OK();
   }
   // Start thread when getting in Process() for the first time
-  // 默认是false，不单独开线程
+  // 默认是true
   if (FLAGS_enable_open_space_planner_thread && !thread_init_flag_) {
     task_future_ = cyber::Async(
         &OpenSpaceTrajectoryProvider::GenerateTrajectoryThread, this);
@@ -119,7 +119,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
         previous_frame->current_frame_planned_trajectory()
             .header()
             .timestamp_sec();
-    // 默认4,为什么和下面的cycle time不一样？
+    // 0.1 s
     const double planning_cycle_time = FLAGS_open_space_planning_period;
     // 用上一帧的轨迹初始化了一个轨迹
     PublishableTrajectory last_frame_complete_trajectory(
@@ -133,7 +133,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
         &last_frame_complete_trajectory, &replan_reason);
   } else {
     ADEBUG << "Replan due to fallback stop";
-    // 默认为0.1,为什么和上面的cycle time不一样？
+    //  0.1 s
     const double planning_cycle_time =
         1.0 / static_cast<double>(FLAGS_planning_loop_rate);
     // 以车辆此时的状态生成一个trajectory point，这个vector中只有这一个点
@@ -147,6 +147,7 @@ Status OpenSpaceTrajectoryProvider::Process() {
   // Get open_space_info from current frame
   const auto& open_space_info = frame_->open_space_info();
 
+  // 默认是true
   if (FLAGS_enable_open_space_planner_thread) {
     ADEBUG << "Open space plan in multi-threads mode";
 
