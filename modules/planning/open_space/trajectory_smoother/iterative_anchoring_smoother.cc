@@ -102,6 +102,7 @@ bool IterativeAnchoringSmoother::Smooth(
     last_path_point = cur_path_point;
   }
 
+  // default 0.1
   const double interpolated_delta_s =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .interpolated_delta_s();
