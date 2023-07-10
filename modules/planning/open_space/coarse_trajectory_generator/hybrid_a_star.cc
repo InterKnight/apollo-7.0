@@ -201,6 +201,7 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
   // 相邻grid内的最后一个路径点会被定义为next node，但该grid内可以有多个路径点，就是可以走多步
   // 如果step_size太大，则会不符合车辆动力学的简化假设，太小则会增加计算量。默认0.25
   // arc其实就是网格大小的根号2倍，arc太大可能轨迹不是最优的，arc太小会增加计算量. 网格大小默认0.3
+  // arc = 0.3*根号2；step_size_ = 0.2 , arc / step_size_ = 1.6
   for (size_t i = 0; i < arc / step_size_; ++i) {
     const double next_x = last_x + traveled_distance * std::cos(last_phi);
     const double next_y = last_y + traveled_distance * std::sin(last_phi);
@@ -667,8 +668,8 @@ bool HybridAStar::TrajectoryPartition(
               3
              /
             /
-           4 
-*/     
+           4
+*/
     if (gear != current_gear) {
       current_traj->x.push_back(x[i]);
       current_traj->y.push_back(y[i]);
@@ -843,7 +844,7 @@ bool HybridAStar::Plan(
     // 用RS曲线试试运气，运气爆棚可以到达终点，则搜索结束，理论上这不应该每次都试把？
     // 推测可能是因为每次开始用混合A*搜索路径时，车辆离车位已经很近了，默认5m左右，
     // 所以这时候应该很快能找到合适路径，每次都试也可以
-    
+
     // 在简单无障碍物的环境下测试了一下，改成2个点算一次（explored_node_num % 2 == 0）后，
     // rs_time减小了，explored_node_num基本不变，总时间减小约20%
     // 但整个混合A*不稳定，多次跑的结果不一致，差距大于20%，所以改的意义也不大
