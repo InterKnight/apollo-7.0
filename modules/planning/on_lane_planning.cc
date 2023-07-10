@@ -88,6 +88,7 @@ Status OnLanePlanning::Init(const PlanningConfig& config) {
 
   PlanningBase::Init(config_);
 
+  // 注册各种planner
   planner_dispatcher_->Init();
 
   ACHECK(apollo::cyber::common::GetProtoFromFile(

@@ -24,6 +24,7 @@ namespace apollo {
 namespace planning {
 
 GridSearch::GridSearch(const PlannerOpenSpaceConfig& open_space_conf) {
+  // default 0.5
   xy_grid_resolution_ =
       open_space_conf.warm_start_config().grid_a_star_xy_resolution();
   node_radius_ = open_space_conf.warm_start_config().node_radius();
@@ -59,6 +60,7 @@ bool GridSearch::CheckConstraints(std::shared_ptr<Node2d> node) {
   return true;
 }
 
+// 8 adjacent nodes: up down left right up-left up-right down-left down-right
 std::vector<std::shared_ptr<Node2d>> GridSearch::GenerateNextNodes(
     std::shared_ptr<Node2d> current_node) {
   double current_node_x = current_node->GetGridX();
@@ -135,6 +137,7 @@ bool GridSearch::GenerateAStarPath(
       break;
     }
     close_set.emplace(current_node->GetIndex(), current_node);
+    // function return a vector, use std::move to Improve efficiency
     std::vector<std::shared_ptr<Node2d>> next_nodes =
         std::move(GenerateNextNodes(current_node));
     for (auto& next_node : next_nodes) {
@@ -149,6 +152,7 @@ bool GridSearch::GenerateAStarPath(
       if (open_set.find(next_node->GetIndex()) == open_set.end()) {
         ++explored_node_num;
         next_node->SetHeuristic(
+            // EuclidDistance
             EuclidDistance(next_node->GetGridX(), next_node->GetGridY(),
                            end_node->GetGridX(), end_node->GetGridY()));
         next_node->SetPreNode(current_node);

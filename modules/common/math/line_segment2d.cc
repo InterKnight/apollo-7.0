@@ -45,10 +45,13 @@ LineSegment2d::LineSegment2d(const Vec2d &start, const Vec2d &end)
     : start_(start), end_(end) {
   const double dx = end_.x() - start_.x();
   const double dy = end_.y() - start_.y();
+  // hypotenuse
   length_ = hypot(dx, dy);
+  // cos and sin
   unit_direction_ =
       (length_ <= kMathEpsilon ? Vec2d(0, 0)
                                : Vec2d(dx / length_, dy / length_));
+  // Angle to the X-axis
   heading_ = unit_direction_.Angle();
 }
 
@@ -68,6 +71,7 @@ double LineSegment2d::DistanceTo(const Vec2d &point) const {
   }
   const double x0 = point.x() - start_.x();
   const double y0 = point.y() - start_.y();
+  // projection
   const double proj = x0 * unit_direction_.x() + y0 * unit_direction_.y();
   if (proj <= 0.0) {
     return hypot(x0, y0);

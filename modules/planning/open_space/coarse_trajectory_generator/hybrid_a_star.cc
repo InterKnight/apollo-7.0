@@ -35,6 +35,7 @@ HybridAStar::HybridAStar(const PlannerOpenSpaceConfig& open_space_conf) {
       std::make_unique<ReedShepp>(vehicle_param_, planner_open_space_config_);
   grid_a_star_heuristic_generator_ =
       std::make_unique<GridSearch>(planner_open_space_config_);
+  // default 10
   next_node_num_ =
       planner_open_space_config_.warm_start_config().next_node_num();
   // 最大前轮转角是最大方向盘转角乘以一个系数
@@ -85,6 +86,8 @@ bool HybridAStar::RSPCheck(
   return ValidityCheck(node);
 }
 
+// pass a node which maybe contain more than 1 step
+// Check each step for crossing the border or collision
 bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
   CHECK_NOTNULL(node);
   // GT是greater than 的简写,数字后面加U表示用 unsigned int类型存储数字，默认是int，加U就可以减小空间消耗
@@ -127,6 +130,11 @@ bool HybridAStar::ValidityCheck(std::shared_ptr<Node3d> node) {
     for (const auto& obstacle_linesegments : obstacles_linesegments_vec_) {
       for (const common::math::LineSegment2d& linesegment :
            obstacle_linesegments) {
+        // 为什么这里要用一个box和一个线段求交点？这个计算量很大
+        // 为什么不直接判断两个box之间是否有重叠，这个命名很简单，参考box2d.cc的283行
+        // 为了将目标车位的边界也加入到碰撞检测中来，但是感觉只为了这个就把障碍物的碰撞检测
+        // 也采用这种耗时巨大的方式有点不划算，实在需要的话可以采用分开的方式。障碍物用box，
+        // 目标车位是线段
         if (bounding_box.HasOverlap(linesegment)) {
           ADEBUG << "collision start at x: " << linesegment.start().x();
           ADEBUG << "collision start at y: " << linesegment.start().y();
@@ -877,8 +885,8 @@ bool HybridAStar::Plan(
         const double start_time = Clock::NowInSeconds();
         CalculateNodeCost(current_node, next_node);
         const double end_time = Clock::NowInSeconds();
-        // 这里叫heuristic_time其实不准确，这个过程包含两部分，f和h
-        // 其中f需要计算，h直接查表
+        // 这里叫heuristic_time其实不准确，这个过程包含两部分，g和h
+        // 其中g需要计算，h直接查表
         heuristic_time += end_time - start_time;
         open_set_.emplace(next_node->GetIndex(), next_node);
         open_pq_.emplace(next_node->GetIndex(), next_node->GetCost());
