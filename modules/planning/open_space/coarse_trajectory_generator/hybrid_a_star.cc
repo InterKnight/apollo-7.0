@@ -209,6 +209,7 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
   // 相邻grid内的最后一个路径点会被定义为next node，但该grid内可以有多个路径点，就是可以走多步
   // 如果step_size太大，则会不符合车辆动力学的简化假设，太小则会增加计算量。默认0.25
   // arc其实就是网格大小的根号2倍，arc太大可能轨迹不是最优的，arc太小会增加计算量. 网格大小默认0.3
+  // arc = 0.3*根号2；step_size_ = 0.2 , arc / step_size_ = 1.6
   for (size_t i = 0; i < arc / step_size_; ++i) {
     const double next_x = last_x + traveled_distance * std::cos(last_phi);
     const double next_y = last_y + traveled_distance * std::sin(last_phi);
