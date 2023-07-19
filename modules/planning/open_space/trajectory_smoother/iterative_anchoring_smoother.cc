@@ -596,7 +596,7 @@ void IterativeAnchoringSmoother::AdjustPathBounds(
   bounds->at(1) = 0.0;
   bounds->at(bounds->size() - 1) = 0.0;
   bounds->at(bounds->size() - 2) = 0.0;
-  // 正常应该是true,将第3个点的bound设置为0
+  // 正常应该是true,将第3个点的bound设置为0,三个点就能确定曲率了?
   if (enforce_initial_kappa_) {
     bounds->at(2) = 0.0;
   }
