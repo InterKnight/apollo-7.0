@@ -205,11 +205,12 @@ std::shared_ptr<Node3d> HybridAStar::Next_node_generator(
   intermediate_y.push_back(last_y);
   intermediate_phi.push_back(last_phi);
   // 在向外扩展子节点时，每次需要向外扩展arc长度，但不是一步就迈arc的长度，而是一小步一小步来，每一小步的长度为step_size_
+  // 每一小步的steering是固定的
   // 由于arc和grid resolution是根号2倍的关系，该node的next_node一定在相邻的其他grid内
   // 相邻grid内的最后一个路径点会被定义为next node，但该grid内可以有多个路径点，就是可以走多步
   // 如果step_size太大，则会不符合车辆动力学的简化假设，太小则会增加计算量。默认0.25
   // arc其实就是网格大小的根号2倍，arc太大可能轨迹不是最优的，arc太小会增加计算量. 网格大小默认0.3
-  // arc = 0.3*根号2；step_size_ = 0.2 , arc / step_size_ = 1.6
+  // arc = 0.3*根号2；step_size_ = 0.25 , arc / step_size_ = 1.6
   for (size_t i = 0; i < arc / step_size_; ++i) {
     const double next_x = last_x + traveled_distance * std::cos(last_phi);
     const double next_y = last_y + traveled_distance * std::sin(last_phi);
@@ -386,8 +387,8 @@ bool HybridAStar::GenerateSpeedAcceleration(HybridAStartResult* result) {
   for (size_t i = 1; i + 1 < x_size; ++i) {
     // 这里其实是将速度分解为x向和y向的，然后再相加
     // 还可以用取平方和再开根号（hypot）的方式，可能运算量比求三角函数大把
-    // 这里delta_t默认是0.5，那就代表着在apollo认为在delta_t的时间范围内，走了step_size的距离
-    // 也就是在0.5s内，走了0.25m，这其实就能算速度是0.5m/s^2，这个显然不是一个普适的值
+    // 距离除以时间算速度,这里delta_t默认是0.5，那就代表着在apollo认为在delta_t的时间范围内，走了arc的距离
+    // 也就是在0.5s内，走了(std::sqrt(2) * xy_grid_resolution_ )，这其实就能算速度是0.5m/s^2，这个显然不是一个普适的值
     // 然后他又用这个距离来反推速度，这显然是矛盾的？
     // 因为这些点不关是通过常规的扩展子节点而来，如果是这样来的，那根据之前的假设，
     // 速度确实是已知。但这些点还有可能通过RS曲线来，通过RS曲线来的点可能速度就是未知的。
@@ -816,14 +817,14 @@ bool HybridAStar::Plan(
 
   // f = g + h，在apollo中变量名称是：
   // cost_ = path_cost_ + heuristic_
-  // 使用djkstra算法来计算目标点到图中任一点的path_cost
+  // 使用djkstra算法来计算目标点到图中任一点的heuristic_
   // 相当于把地图里每个点都跑了一遍，知道了到每个点的距离
   // 为什么不用经典A*呢，因为经典A*适合点到点的最短距离，
   // 想起点到所有点的距离，用dijkstra更合适
   // dijkstra相当与把经典A*中 f=g+h中的h设为0，也就是不启发
   // 生成一个dp_map,这里的dp是动态规划的意思。这个dp_map是一个unordered map
   // 里面记录了一个二维网格地图中所有的格子，也就是所有节点，每一个节点上都有
-  // 它到终点的path_cost，后续只需要查表，空间换时间
+  // 它到终点的heuristic_，后续只需要查表，空间换时间
   double map_time = Clock::NowInSeconds();
   grid_a_star_heuristic_generator_->GenerateDpMap(ex, ey, XYbounds_,
                                                   obstacles_linesegments_vec_);
