@@ -172,6 +172,8 @@ bool GridSearch::GenerateAStarPath(
 }
 
 // djkstra算法
+// 很奇怪的是，这个过程中的分辨率是0.5，也是配置文件决定的，但是混合A星的分辨率确实0.3
+// 这两个不应该统一吗？
 bool GridSearch::GenerateDpMap(
     const double ex, const double ey, const std::vector<double>& XYbounds,
     const std::vector<std::vector<common::math::LineSegment2d>>&
