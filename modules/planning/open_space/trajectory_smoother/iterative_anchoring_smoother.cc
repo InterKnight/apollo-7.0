@@ -54,6 +54,7 @@ IterativeAnchoringSmoother::IterativeAnchoringSmoother(
   planner_open_space_config_ = planner_open_space_config;
 }
 
+// for partition path, not the whole path
 bool IterativeAnchoringSmoother::Smooth(
     const Eigen::MatrixXd& xWS, const double init_a, const double init_v,
     const std::vector<std::vector<Vec2d>>& obstacles_vertices_vec,
@@ -102,6 +103,7 @@ bool IterativeAnchoringSmoother::Smooth(
     last_path_point = cur_path_point;
   }
 
+  // default 0.1
   const double interpolated_delta_s =
       planner_open_space_config_.iterative_anchoring_smoother_config()
           .interpolated_delta_s();
@@ -594,7 +596,7 @@ void IterativeAnchoringSmoother::AdjustPathBounds(
   bounds->at(1) = 0.0;
   bounds->at(bounds->size() - 1) = 0.0;
   bounds->at(bounds->size() - 2) = 0.0;
-  // 正常应该是true,将第3个点的bound设置为0
+  // 正常应该是true,将第3个点的bound设置为0,三个点就能确定曲率了?
   if (enforce_initial_kappa_) {
     bounds->at(2) = 0.0;
   }
@@ -677,7 +679,7 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   // 这是怎么来的？
   const double total_t = 2 * path_length / max_reverse_acc * 10;
   ADEBUG << "total_t is : " << total_t;
-  // 加1不能省
+  // 加1不能省,表示一共有多少点
   const size_t num_of_knots = static_cast<size_t>(total_t / delta_t) + 1;
 
   // 这里把速度和加速度都取了绝对值，这是为什么？
@@ -705,7 +707,7 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   std::vector<std::pair<double, double>> ddx_bounds(num_of_knots,
                                                     {-max_acc, max_acc});
 
-  // 终点一定是那个点，且速度和加速度一定是0
+  // 终点一定是那个点，且速度和加速度一定是0,末态约束
   x_bounds[num_of_knots - 1] = std::make_pair(path_length, path_length);
   dx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
   ddx_bounds[num_of_knots - 1] = std::make_pair(0.0, 0.0);
@@ -761,6 +763,7 @@ bool IterativeAnchoringSmoother::SmoothSpeed(const double init_a,
   return true;
 }
 
+// 对平滑后的速度曲线进行插值，然后用插值后的每个点的s，去匹配对应路径曲线上的位置
 bool IterativeAnchoringSmoother::CombinePathAndSpeed(
     const DiscretizedPath& path_points, const SpeedData& speed_points,
     DiscretizedTrajectory* discretized_trajectory) {
